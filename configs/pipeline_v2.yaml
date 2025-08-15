@@ -1,0 +1,7 @@
+splits:
+  test_size: 0.2
+  val_size: 0.2
+random_state: 42
+imbalance:
+  apply_smote: true
+  threshold: 0.3
