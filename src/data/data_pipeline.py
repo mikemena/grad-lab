@@ -125,7 +125,7 @@ class DataPipeline:
             test_df, target_column, test_excel, fit=False
         )
         y_test = test_df[target_column].values
-
+        logger.debug(f"apply_smote: {apply_smote}")
         if apply_smote:
             is_imbalanced, distribution = self._detect_class_imbalance(
                 train_df[target_column], imbalance_threshold
