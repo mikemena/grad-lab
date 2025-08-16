@@ -1,27 +1,33 @@
 import torch
 import os
-from data_pipeline_v2 import DataPipeline
+import sys
+import argparse
+import yaml
+from data_pipeline import DataPipeline
 import numpy as np
 import pandas as pd
 from hashlib import sha1
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import setup_logger
 
 logger = setup_logger(__name__, include_location=True)
 
 
-def prepare_training_data():
+def prepare_training_data(config):
     """Prepare and save training data with both processed and raw splits"""
     logger.info("Starting data preparation...")
 
     pipeline = DataPipeline()
     X_train, X_val, X_test, y_train, y_val, y_test, train_df, val_df, test_df = (
         pipeline.prepare_training_data_with_splits(
-            "data/bank_loans.xlsx",
-            target_column="personal_loan",
-            test_size=0.2,
-            val_size=0.2,
-            random_state=42,
-            imbalance_threshold=0.3,
+            config["file_path"],
+            target_column=config["target_column"],
+            test_size=config["splits"]["test_size"],
+            val_size=config["splits"]["val_size"],
+            random_state=config["random_state"],
+            apply_smote=config["imbalance"]["apply_smote"],
+            imbalance_threshold=config["imbalance"]["threshold"],
         )
     )
     logger.info(
@@ -32,38 +38,49 @@ def prepare_training_data():
     logger.info(f"Validation set: {X_val.shape}")
     logger.info(f"Test set: {X_test.shape}")
 
-    torch.save(
-        {
-            "X_train": X_train,
-            "X_val": X_val,
-            "X_test": X_test,
-            "y_train": y_train,
-            "y_val": y_val,
-            "y_test": y_test,
-        },
-        "processed_data.pt",
-    )
-    logger.info("✅ Processed tensors saved to 'processed_data.pt'")
-    logger.info("\n🔍 Saving raw dataframes for debugging...")
-    debug_dir = "debug_splits"
-    os.makedirs(debug_dir, exist_ok=True)
+    # Save processed tensors if configured
+    if config.get("output", {}).get("save_processed_data", True):
+        torch.save(
+            {
+                "X_train": X_train,
+                "X_val": X_val,
+                "X_test": X_test,
+                "y_train": y_train,
+                "y_val": y_val,
+                "y_test": y_test,
+            },
+            "processed_data.pt",
+        )
+        logger.info("✅ Processed tensors saved to 'processed_data.pt'")
 
-    # Add temp_index to validation and test raw splits for consistent merging in predictions
-    val_df["temp_index"] = np.arange(len(val_df))
-    test_df["temp_index"] = np.arange(len(test_df))
+    # Save debug splits if configured
+    if config.get("output", {}).get("debug_splits", True):
+        logger.info("\n🔍 Saving raw dataframes for debugging...")
+        debug_dir = config["output"]["debug_splits_dir"]
 
-    train_df.to_excel(os.path.join(debug_dir, "raw_train_split.xlsx"), index=False)
-    val_df.to_excel(os.path.join(debug_dir, "raw_val_split.xlsx"), index=False)
-    test_df.to_excel(os.path.join(debug_dir, "raw_test_split.xlsx"), index=False)
+        # Create debug directory if it doesn't exist
+        os.makedirs(debug_dir, exist_ok=True)
 
-    logger.info(f"✅ Raw splits saved to '{debug_dir}/' directory:")
-    logger.info(f"📄 raw_train_split.xlsx ({train_df.shape})")
-    logger.info(f"📄 raw_val_split.xlsx ({val_df.shape})")
-    logger.info(f"📄 raw_test_split.xlsx ({test_df.shape})")
+        # Add temp_index to validation and test raw splits for consistent merging in predictions
+        val_df["temp_index"] = np.arange(len(val_df))
+        test_df["temp_index"] = np.arange(len(test_df))
 
-    create_split_summary(
-        train_df, val_df, test_df, debug_dir, target_column="personal_loan"
-    )
+        train_df.to_excel(os.path.join(debug_dir, "raw_train_split.xlsx"), index=False)
+        val_df.to_excel(os.path.join(debug_dir, "raw_val_split.xlsx"), index=False)
+        test_df.to_excel(os.path.join(debug_dir, "raw_test_split.xlsx"), index=False)
+
+        logger.info(f"✅ Raw splits saved to '{debug_dir}/' directory:")
+        logger.info(f"📄 raw_train_split.xlsx ({train_df.shape})")
+        logger.info(f"📄 raw_val_split.xlsx ({val_df.shape})")
+        logger.info(f"📄 raw_test_split.xlsx ({test_df.shape})")
+
+        create_split_summary(
+            train_df,
+            val_df,
+            test_df,
+            debug_dir,
+            target_column=config["target_column"],
+        )
 
     return X_train, X_val, X_test, y_train, y_val, y_test
 
@@ -115,10 +132,13 @@ def create_split_summary(train_df, val_df, test_df, debug_dir, target_column):
             logger.info(f"Target distribution: {row['Target_Distribution']}")
 
 
-def debug_splits(target_column="personal_loan"):
+def debug_splits(config):
     """Function to help debug splitting issues after training"""
     logger.info("🔍 DEBUGGING SPLIT INTEGRITY...")
-    debug_dir = "debug_splits"
+
+    # Get debug directory from config
+    debug_dir = config.get("output", {}).get("debug_splits_dir", "debug_splits")
+    target_column = config["target_column"]
 
     try:
         train_df = pd.read_excel(os.path.join(debug_dir, "raw_train_split.xlsx"))
@@ -189,7 +209,25 @@ def debug_splits(target_column="personal_loan"):
         logger.error(f"❌ Error during debugging: {e}")
 
 
-if __name__ == "__main__":
-    prepare_training_data()
+def main():
+    parser = argparse.ArgumentParser(description="Prepare data with config")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="configs/pipeline_v1.yaml",
+        help="Path to config YAML file",
+    )
+    args = parser.parse_args()
+
+    # Load config
+    with open(args.config, "r") as f:
+        config = yaml.safe_load(f)
+
+    # Pass config to the function
+    prepare_training_data(config)
     logger.info("\n" + "=" * 50)
-    debug_splits()
+    debug_splits(config)
+
+
+if __name__ == "__main__":
+    main()

@@ -2,10 +2,12 @@ import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 import os
-import yaml
+import sys
 from data_analyzer import analyze_dataset
 from data_preprocessor import DataPreprocessor
 from imblearn.over_sampling import SMOTE
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import setup_logger
 
 logger = setup_logger(__name__, include_location=True)
@@ -30,7 +32,7 @@ class DataPipeline:
 
     # SMOTE (Synthetic Minority Oversampling Technique)
     def _apply_smote(self, X, y, random_state=42):
-        logger.info("🔄 Applying SMOTE to training data...")
+        logger.info("Applying SMOTE to training data...")
         smote = SMOTE(random_state=random_state)
         X_resampled, y_resampled = smote.fit_resample(X, y)
         logger.info(f"✓ SMOTE applied: {X.shape} → {X_resampled.shape}")
@@ -125,13 +127,13 @@ class DataPipeline:
         y_test = test_df[target_column].values
 
         if apply_smote:
-                    is_imbalanced, distribution = self._detect_class_imbalance(
-                        train_df[target_column], imbalance_threshold
-                    )
-                    if is_imbalanced:
-                        X_train_processed, y_train = self._apply_smote(
-                            X_train_processed, y_train, random_state
-                        )
+            is_imbalanced, distribution = self._detect_class_imbalance(
+                train_df[target_column], imbalance_threshold
+            )
+            if is_imbalanced:
+                X_train_processed, y_train = self._apply_smote(
+                    X_train_processed, y_train, random_state
+                )
 
         logger.info("\n6. CONVERTING TO TENSORS...")
         X_train = torch.FloatTensor(X_train_processed.values)

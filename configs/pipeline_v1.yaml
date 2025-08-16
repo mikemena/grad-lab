@@ -1,0 +1,15 @@
+file_path: "datasets/bank_loans.xlsx"
+target_column: "personal_loan"
+splits:
+  test_size: 0.2
+  val_size: 0.2
+random_state: 42
+imbalance:
+  apply_smote: false
+  threshold: 0.3
+preprocessing:
+  save_dir: "experiments/preprocessing/artifacts"
+output:
+  save_processed_data: true
+  debug_splits: true
+  debug_splits_dir: "experiments/preprocessing/debug_splits"

@@ -1,0 +1,12 @@
+model:
+  input_dim: 28
+  hidden_dims: [256, 128, 64]
+  dropout_rate: 0.4
+  activation: swish
+  use_residual: true
+training:
+  epochs: 100
+  lr: 0.001
+  loss_type: focal
+  alpha: 0.25
+  gamma: 2.0
