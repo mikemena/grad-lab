@@ -8,6 +8,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import setup_logger
+
 from data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
@@ -323,15 +324,21 @@ def create_data_loaders(X_train, y_train, X_val, y_val, X_test, y_test, batch_si
 
 def main():
     parser = argparse.ArgumentParser(description="Train model with config")
-    parser.add_argument("--config", type=str, default="configs/model_v1.yaml", help="Path to config YAML file")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="configs/model_v1.yaml",
+        help="Path to config YAML file",
+    )
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
 
     # Make paths relative to the script's location
+    #
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    preprocessing_artifacts_dir = os.path.join(script_dir, "../preprocessing_artifacts")
+    preprocessing_artifacts_dir = config["file_path"]
 
     # Debug prints to verify paths
     logger.info("\nDebug Info:")
@@ -377,7 +384,7 @@ def main():
     input_dim = X_train.shape[1]
 
     class_weights = None
-    if config['training'].get('use_class_weights', False):
+    if config["training"].get("use_class_weights", False):
         logger.info("\nComputing class weights...")
         class_weights = compute_class_weight(
             "balanced", classes=np.unique(y_train_raw), y=y_train_raw
@@ -386,23 +393,29 @@ def main():
 
     model = Predictor(
         input_dim=input_dim,
-        hidden_dims=config['model']['hidden_dims'],
-        dropout_rate=config['model']['dropout_rate']
+        hidden_dims=config["model"]["hidden_dims"],
+        dropout_rate=config["model"]["dropout_rate"],
     )
     trainer = ModelTrainer(model, class_weights=class_weights)
     train_loader, val_loader, test_loader = create_data_loaders(
-        X_train, y_train, X_val, y_val, X_test, y_test, batch_size=config['data']['batch_size']
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        X_test,
+        y_test,
+        batch_size=config["data"]["batch_size"],
     )
     training_results = trainer.train(
         train_loader,
         val_loader,
-        epochs=config['training']['epochs'],
-        lr=config['training']['lr'],
-        weight_decay=config['training']['weight_decay'],
-        patience=config['training']['patience'],
-        min_delta=config['training']['min_delta'],
+        epochs=config["training"]["epochs"],
+        lr=config["training"]["lr"],
+        weight_decay=config["training"]["weight_decay"],
+        patience=config["training"]["patience"],
+        min_delta=config["training"]["min_delta"],
         save_path="models/best_model.pt",
-        optimizer_name=config['training']['optimizer_name'],
+        optimizer_name=config["training"]["optimizer_name"],
     )
     metrics, predictions, targets = trainer.evaluate(test_loader)
 

@@ -10,3 +10,5 @@ training:
   loss_type: focal
   alpha: 0.25
   gamma: 2.0
+preprocessing:
+  save_dir: "experiments/preprocessing/artifacts"

@@ -17,8 +17,12 @@ logger = setup_logger(__name__, include_location=True)
 def prepare_training_data(config):
     """Prepare and save training data with both processed and raw splits"""
     logger.info("Starting data preparation...")
+    save_dir = config.get("preprocessing", {}).get(
+        "save_dir", "preprocessing_artifacts"
+    )
+    logger.debug(f"save_dir from config: {save_dir}")
+    pipeline = DataPipeline(save_dir=save_dir)
 
-    pipeline = DataPipeline()
     X_train, X_val, X_test, y_train, y_val, y_test, train_df, val_df, test_df = (
         pipeline.prepare_training_data_with_splits(
             config["file_path"],
@@ -59,7 +63,7 @@ def prepare_training_data(config):
         debug_dir = config["output"]["debug_splits_dir"]
 
         # Create debug directory if it doesn't exist
-        os.makedirs(debug_dir, exist_ok=True)
+        # os.makedirs(debug_dir, exist_ok=True)
 
         # Add temp_index to validation and test raw splits for consistent merging in predictions
         val_df["temp_index"] = np.arange(len(val_df))
@@ -119,6 +123,7 @@ def create_split_summary(train_df, val_df, test_df, debug_dir, target_column):
         summary_data.append(summary)
 
     summary_df = pd.DataFrame(summary_data)
+
     summary_path = os.path.join(debug_dir, "split_summary.xlsx")
     summary_df.to_excel(summary_path, index=False)
 
@@ -138,6 +143,7 @@ def debug_splits(config):
 
     # Get debug directory from config
     debug_dir = config.get("output", {}).get("debug_splits_dir", "debug_splits")
+    logger.debug(f"debug_dir from config: {debug_dir}")
     target_column = config["target_column"]
 
     try:
