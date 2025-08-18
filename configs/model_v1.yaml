@@ -10,5 +10,17 @@ training:
   loss_type: focal
   alpha: 0.25
   gamma: 2.0
+  optimizer_name: Adam
+  weight_decay: 0.0
+  patience: 10
+  min_delta: 0.0001
+  use_class_weights: true
 preprocessing:
   save_dir: "experiments/preprocessing/artifacts"
+data:
+  batch_size: 32
+filepath:
+  train: "bank_loans_train_processed.xlsx"
+  val: "bank_loans_val_processed.xlsx"
+  test: "bank_loans_test_processed.xlsx"
+  state: "preprocessor_state.json"

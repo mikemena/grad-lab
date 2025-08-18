@@ -9,7 +9,7 @@ import yaml
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import setup_logger
 
-from data_preprocessor import DataPreprocessor
+from data.data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 from sklearn.metrics import (
@@ -23,51 +23,10 @@ from sklearn.utils.class_weight import compute_class_weight
 import pandas as pd
 from datetime import datetime
 import json
-from visualize import ModelVisualizer
+from models.predictor import Predictor
+from evaluate import ModelEvaluator
 
 logger = setup_logger(__name__, include_location=True)
-
-
-class Predictor(nn.Module):
-    """Simple Feedforward Neural Network for predicting classification target"""
-
-    def __init__(self, input_dim, hidden_dims=[64], dropout_rate=0.0):
-        super(Predictor, self).__init__()
-
-        self.input_dim = input_dim
-        self.hidden_dims = hidden_dims
-        self.dropout_rate = dropout_rate
-
-        # Build the network layers (simplified: no batch norm for starting point)
-        layers = []
-        prev_dim = input_dim
-
-        # Hidden layers
-        for hidden_dim in hidden_dims:
-            layers.extend(
-                [nn.Linear(prev_dim, hidden_dim), nn.ReLU(), nn.Dropout(dropout_rate)]
-            )
-            prev_dim = hidden_dim
-
-        # Output layer (single neuron for regression)
-        layers.append(nn.Linear(prev_dim, 1))
-        self.network = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.network(x).squeeze()
-
-    def get_model_info(self):
-        """Return model architecture information"""
-        total_params = sum(p.numel() for p in self.parameters())
-        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-
-        return {
-            "input_dim": self.input_dim,
-            "hidden_dims": self.hidden_dims,
-            "dropout_rate": self.dropout_rate,
-            "total_parameters": total_params,
-            "trainable_parameters": trainable_params,
-        }
 
 
 class ModelTrainer:
@@ -280,7 +239,7 @@ class ModelTrainer:
 
 def load_dataset(file_path):
     # Load the preprocessor state
-    preprocessor = DataPreprocessor()
+    preprocessor = DataPreprocessor(save_dir)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(script_dir)
     state_file = os.path.join(
@@ -336,25 +295,25 @@ def main():
         config = yaml.safe_load(f)
 
     # Make paths relative to the script's location
-    #
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    preprocessing_artifacts_dir = config["file_path"]
+    root_dir = os.path.dirname(script_dir)
+    preprocessing_artifacts_dir = os.path.join(
+        root_dir, config["preprocessing"]["save_dir"]
+    )
 
     # Debug prints to verify paths
     logger.info("\nDebug Info:")
     logger.info(f"Script directory: {script_dir}")
     logger.info(f"Preprocessing artifacts directory: {preprocessing_artifacts_dir}")
 
-    state_file = os.path.join(preprocessing_artifacts_dir, "preprocessor_state.json")
-    train_file = os.path.join(
-        preprocessing_artifacts_dir, "bank_loans_train_processed.xlsx"
-    )
-    val_file = os.path.join(
-        preprocessing_artifacts_dir, "bank_loans_val_processed.xlsx"
-    )
-    test_file = os.path.join(
-        preprocessing_artifacts_dir, "bank_loans_test_processed.xlsx"
-    )
+    state_file = os.path.join(preprocessing_artifacts_dir, config["filepath"]["state"])
+    logger.debug(f"Path to state json file: {state_file}")
+    train_file = os.path.join(preprocessing_artifacts_dir, config["filepath"]["train"])
+    logger.debug(f"Path to train data file: {train_file}")
+    val_file = os.path.join(preprocessing_artifacts_dir, config["filepath"]["val"])
+    logger.debug(f"Path to val data file: {val_file}")
+    test_file = os.path.join(preprocessing_artifacts_dir, config["filepath"]["test"])
+    logger.debug(f"Path to test data file: {test_file}")
 
     # Check each file explicitly
     files_to_check = [state_file, train_file, val_file, test_file]
@@ -391,10 +350,13 @@ def main():
         )
         logger.info(f"Class weights: {class_weights}")
 
+    # Initilize model from config
+    model_config = config["model"]
     model = Predictor(
         input_dim=input_dim,
-        hidden_dims=config["model"]["hidden_dims"],
-        dropout_rate=config["model"]["dropout_rate"],
+        hidden_dims=model_config["hidden_dims"],
+        dropout_rate=model_config["dropout_rate"],
+        activtion=model_config["activation"],
     )
     trainer = ModelTrainer(model, class_weights=class_weights)
     train_loader, val_loader, test_loader = create_data_loaders(
@@ -419,25 +381,16 @@ def main():
     )
     metrics, predictions, targets = trainer.evaluate(test_loader)
 
-    # Initialize visualizer
-    visualizer = ModelVisualizer(save_dir="plots")
+    evaluator = ModelEvaluator(model=model, device=trainer.device, save_dir="evaluation_results")
+
+    metrics, predictions, probabilities, targets = evaluator.evaluate(test_loader, feature_names=feature_names)
 
     # Generate visualizations
-    visualizer.plot_training_history(
-        trainer.train_losses, trainer.val_losses, display=False, save=True
-    )
-    visualizer.plot_confusion_matrix(targets, predictions, display=False, save=True)
-    visualizer.plot_data_distribution(
-        X_train.numpy(), feature_names, display=False, save=True
-    )
-    visualizer.plot_prediction_distribution(
-        predictions, targets, display=False, save=True
-    )
-    visualizer.plot_roc_curve(targets, predictions, display=False, save=True)
-    visualizer.plot_precision_recall_curve(
-        targets, predictions, display=False, save=True
-    )
-    visualizer.plot_metrics_bar(metrics, display=False, save=True)
+    evaluator.plot_training_history(trainer.train_losses, trainer.val_losses, display=False, save=True)
+
+    evaluator.plot_data_distribution(X_train.numpy(), feature_names, display=False, save=True)
+
+    evaluator.plot_prediction_distribution(predictions, targets, display=False, save=True)
 
     # Save final results
     results = {
@@ -446,17 +399,17 @@ def main():
         "training_results": training_results,
         "test_metrics": {
             "accuracy": metrics["accuracy"],
-            "f1_score": metrics["f1_score"],
+            "precision": metrics["precision"],
+            "f1_score": metrics["f1"],
             "roc_auc": metrics["roc_auc"],
-            "confusion_matrix": metrics["confusion_matrix"].tolist(),
             "recall": metrics["recall"],
-            "tnr": metrics["tnr"],
+            "true_positives": metrics["true_positives"],
         },
         "preprocessing_artifacts": state_file,
         "config_used": config,
     }
 
-    with open("models/results.json", "w") as f:
+    with open(os.path.join(root_dir, "models", "results.json"), "w") as f:
         json.dump(results, f, indent=2)
     logger.info("\n🎉 TRAINING COMPLETED!")
 

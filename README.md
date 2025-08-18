@@ -4,6 +4,9 @@
 
 `source venv/bin/activate`
 
-# Run prepare data
+# Run data pre-processing:
 # Run from project root: cd /Users/mike/Documents/red/grad-lab
 `python src/data/prepare_data.py --config configs/pipeline_v1.yaml`
+
+# Run train model
+`python src/train_model.py --config configs/model_v1.yaml`
