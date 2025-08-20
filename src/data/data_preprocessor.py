@@ -487,8 +487,9 @@ class DataPreprocessor:
         """Load preprocessing state from JSON"""
         # Use provided state_file or construct the path relative to the script's location
         if state_file is None:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            state_file = os.path.join(script_dir, "preprocessing_artifacts")
+            state_file = os.path.join(self.save_dir, "preprocessor_state.json")
+        elif not os.path.isabs(state_file):
+            state_file = os.path.join(self.save_dir, state_file)
 
         if not os.path.exists(state_file):
             logger.error(f"No saved state found at {state_file}")
