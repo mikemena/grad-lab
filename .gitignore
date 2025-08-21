@@ -53,5 +53,5 @@ htmlcov/
 # Directory
 README.md
 TODO.md
-datasets/
-artifacts/
+/datasets/
+/experiments/

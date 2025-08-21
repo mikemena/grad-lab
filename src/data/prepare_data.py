@@ -53,10 +53,11 @@ def prepare_training_data(config):
                 "y_val": y_val,
                 "y_test": y_test,
             },
-            "processed_data.pt",
+            os.path.join(save_dir, "processed_data.pt"),
         )
-        logger.info("✅ Processed tensors saved to 'processed_data.pt'")
-
+        logger.info(
+            f"✅ Processed tensors saved to '{os.path.join(save_dir, 'processed_data.pt')}'"
+        )
     # Save debug splits if configured
     if config.get("output", {}).get("debug_splits", True):
         logger.info("\n🔍 Saving raw dataframes for debugging...")
