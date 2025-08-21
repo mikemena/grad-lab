@@ -14,7 +14,7 @@ logger = setup_logger(__name__, include_location=True)
 
 
 class DataPipeline:
-    def __init__(self, save_dir="preprocessing_artifacts"):
+    def __init__(self, save_dir):
         self.preprocessor = DataPreprocessor(save_dir)
         self.column_config = None
         self.save_dir = save_dir
@@ -299,27 +299,3 @@ def prepare_split_training_data(file_path, target_column="personal_loan", **kwar
 def load_split_training_data(base_filename="loan"):
     pipeline = DataPipeline()
     return pipeline.load_split_data_for_training(base_filename)
-
-
-if __name__ == "__main__":
-    logger.info("\n" + "=" * 70)
-    logger.info("DEMO: SPLIT EXCEL PIPELINE")
-    logger.info("=" * 70)
-    try:
-        pipeline = DataPipeline()
-        splits = pipeline.prepare_training_data_with_splits(
-            "data/bank_loans.xlsx",
-            target_column="personal_loan",
-            test_size=0.2,
-            val_size=0.2,
-            random_state=42,
-        )
-        logger.info("\n" + "=" * 70)
-        logger.info("DEMO: LOADING SPLIT FILES")
-        logger.info("=" * 70)
-        X_train, X_val, X_test, y_train, y_val, y_test = (
-            pipeline.load_split_data_for_training("loan")
-        )
-        logger.info("\n Split Excel pipeline complete!")
-    except FileNotFoundError:
-        logger.error("File not found")

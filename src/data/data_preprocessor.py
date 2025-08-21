@@ -16,7 +16,7 @@ logger = setup_logger(__name__, include_location=True)
 class DataPreprocessor:
     """Handles all data preprocessing with state management and Excel output"""
 
-    def __init__(self, save_dir="preprocessing_artifacts"):
+    def __init__(self, save_dir):
         self.save_dir = save_dir
         self.scaler = None
         self.feature_columns = None
