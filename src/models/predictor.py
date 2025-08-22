@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from logger import setup_logger  # Assuming this is in src/logger.py
+from logger import setup_logger
 
 logger = setup_logger(__name__, include_location=True)
 
@@ -87,15 +87,38 @@ class ImprovedPredictor(Predictor):
         self.layers = nn.ModuleList()  # Build with residuals as in v4
         prev_dim = input_dim
         for i, hidden_dim in enumerate(hidden_dims):
+            # Linear layer
             layer_block = nn.ModuleList([nn.Linear(prev_dim, hidden_dim)])
+            # Batch normalization
             if use_batch_norm:
                 layer_block.append(nn.BatchNorm1d(hidden_dim))
-            # Add activation...
+            # Activation
+            if activation == "relu":
+                layer_block.append(nn.ReLU())
+            elif activation == "leaky_relu":
+                layer_block.append(nn.LeakyReLU(0.01))
+            elif activation == "gelu":
+                layer_block.append(nn.GELU())
+            elif activation == "swish":
+                layer_block.append(nn.SiLU())
             self.layers.append(layer_block)
+
+            # Dropout
+            layer_block.append(nn.Dropout(dropout_rate))
+
+            self.layers.append(layer_block)
+            # Residual connection projection if dimensions don't match
             if use_residual and prev_dim != hidden_dim:
                 setattr(self, f"residual_proj_{i}", nn.Linear(prev_dim, hidden_dim))
             prev_dim = hidden_dim
-        # Output layer as in v4...
+
+        # Output layer with additional regularization
+        self.output_layer = nn.Sequential(
+            nn.Linear(prev_dim, prev_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate * 0.5),
+            nn.Linear(prev_dim // 2, 1),
+        )
 
     def forward(self, x):
         x = self.input_norm(x)
@@ -126,4 +149,7 @@ class FocalLoss(nn.Module):
         focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
         if self.reduction == "mean":
             return focal_loss.mean()
-        return focal_loss
+        elif self.reduction == "sum":
+            return focal_loss.sum()
+        else:
+            return focal_loss

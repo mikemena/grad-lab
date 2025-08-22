@@ -1,4 +1,4 @@
-model:
+model: # Model architecture
   type: basic # 'basic' for Predictor, 'improved' for ImprovedPredictor
   input_dim: 28
   hidden_dims: [256, 128, 64]
@@ -7,7 +7,7 @@ model:
   use_batch_norm: true
   use_residual: true
 
-training:
+training: # Training parameters
   epochs: 100
   lr: 0.001
   loss_type: focal # 'bce', 'weighted_bce', 'focal'
