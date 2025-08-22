@@ -485,18 +485,14 @@ class DataPreprocessor:
 
     def load_state(self, state_file=None):
         """Load preprocessing state from JSON"""
-        # Use provided state_file or construct the path relative to the script's location
-        if state_file is None:
-            state_file = os.path.join(self.save_dir, "preprocessor_state.json")
-        elif not os.path.isabs(state_file):
-            state_file = os.path.join(self.save_dir, state_file)
-
-        if not os.path.exists(state_file):
-            logger.error(f"No saved state found at {state_file}")
-            raise FileNotFoundError(f"No saved state found at {state_file}")
-
-        logger.info(f"state_file: {state_file}")
-        with open(state_file, "r") as f:
+        # Use state_file as-is if it’s an absolute path or starts with project root
+        if os.path.isabs(state_file) or state_file.startswith("experiments/"):
+            file_path = state_file
+        else:
+            file_path = os.path.join(self.save_dir, state_file)
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"No saved state found at {file_path}")
+        with open(file_path, "r") as f:
             state = json.load(f)
 
         self.scaler = StandardScaler()

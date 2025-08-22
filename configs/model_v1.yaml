@@ -33,7 +33,8 @@ preprocessing:
 
 data:
   filepath:
-    train: "bank_loans_train_processed.xlsx"
-    val: "bank_loans_val_processed.xlsx"
-    test: "bank_loans_test_processed.xlsx"
-    state: "preprocessor_state.json"
+    state: "experiments/preprocessing/artifacts/preprocessor_state.json"
+    train: "experiments/preprocessing/artifacts/bank_loans_train_processed.xlsx"
+    val: "experiments/preprocessing/artifacts/bank_loans_val_processed.xlsx"
+    test: "experiments/preprocessing/artifacts/bank_loans_test_processed.xlsx"
+  target_column: "personal_loan"

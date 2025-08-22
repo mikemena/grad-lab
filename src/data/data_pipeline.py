@@ -14,7 +14,7 @@ logger = setup_logger(__name__, include_location=True)
 
 
 class DataPipeline:
-    def __init__(self, save_dir):
+    def __init__(self, save_dir="experiments/preprocessing/artifacts"):
         self.preprocessor = DataPreprocessor(save_dir)
         self.column_config = None
         self.save_dir = save_dir

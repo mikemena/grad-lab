@@ -164,21 +164,29 @@ class ModelTrainer:
 
 def instantiate_model(model_config, input_dim):
     model_type = model_config["type"]
+    # Create a copy of model_config without input_dim and type
+    model_params = model_config.copy()
+    if "input_dim" in model_params:
+        del model_params["input_dim"]
+    if "type" in model_params:
+        del model_params["type"]
+
     if model_type == "basic":
-        return Predictor(input_dim=input_dim, **model_config)
+        return Predictor(input_dim=input_dim, **model_params)
     elif model_type == "improved":
-        return ImprovedPredictor(input_dim=input_dim, **model_config)
+        return ImprovedPredictor(input_dim=input_dim, **model_params)
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
 
-def load_dataset(file_path, state_file):
+def load_dataset(file_path, state_file, save_dir, config):
     """Load dataset with preprocessing."""
-    preprocessor = DataPreprocessor()
+    preprocessor = DataPreprocessor(save_dir=save_dir)
     preprocessor.load_state(state_file)
     df = pd.read_excel(file_path)
-    X = df.drop(["non_responder_in", "temp_index"], axis=1, errors="ignore").values
-    y_raw = df["non_responder_in"].values
+    target_column = config["data"]["target_column"]
+    X = df.drop([target_column, "temp_index"], axis=1, errors="ignore").values
+    y_raw = df[target_column].values
     if preprocessor.target_type in ["binary", "categorical"]:
         y = preprocessor.target_label_encoder.transform(y_raw)
     else:
@@ -212,16 +220,24 @@ def main(config_path):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
+    # Extract save_dir from config
+    save_dir = config.get("preprocessing", {}).get(
+        "save_dir", "experiments/preprocessing/artifacts"
+    )
+    logger.info(f"Using save_dir: {save_dir}")
+
     # Load data
-    preprocessor = DataPreprocessor()
+    # preprocessor = DataPreprocessor()
     state_file = config["data"]["filepath"]["state"]
     train_file = config["data"]["filepath"]["train"]
     val_file = config["data"]["filepath"]["val"]
     test_file = config["data"]["filepath"]["test"]
 
-    X_train, y_train, y_train_raw = load_dataset(train_file, state_file)
-    X_val, y_val, _ = load_dataset(val_file, state_file)
-    X_test, y_test, _ = load_dataset(test_file, state_file)
+    X_train, y_train, y_train_raw = load_dataset(
+        train_file, state_file, save_dir, config
+    )
+    X_val, y_val, _ = load_dataset(val_file, state_file, save_dir, config)
+    X_test, y_test, _ = load_dataset(test_file, state_file, save_dir, config)
 
     input_dim = X_train.shape[1]
     with open(state_file, "r") as f:
@@ -278,11 +294,12 @@ def main(config_path):
             "accuracy": metrics["accuracy"],
             "f1_score": metrics["f1"],
             "roc_auc": metrics["roc_auc"],
-            "confusion_matrix": metrics["confusion_matrix"].tolist(),
             "recall": metrics["recall"],
         },
     }
-    with open("models/final_results.json", "w") as f:
+    # final_json_file = r"{save_dir}/final_results.json"
+    # logger.debug(f"")
+    with open(f"{save_dir}/final_results.json", "w") as f:
         json.dump(results, f, indent=2)
     logger.info("\n🎉 FINAL TRAINING COMPLETED!")
 

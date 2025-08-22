@@ -12,12 +12,13 @@ class Predictor(nn.Module):
     def __init__(
         self,
         input_dim,
-        hidden_dims=[64],
-        dropout_rate=0.0,
+        hidden_dims=[128, 64],
+        dropout_rate=0.3,
         activation="relu",
-        use_batch_norm=False,
+        use_batch_norm=True,
+        **kwargs,
     ):
-        super(Predictor, self).__init__()
+        super().__init__()
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
         self.dropout_rate = dropout_rate
@@ -50,7 +51,18 @@ class Predictor(nn.Module):
     def forward(self, x):
         return self.network(x).squeeze()
 
-    # get_model_info() as in your code...
+    def get_model_info(self):
+        """Return model architecture information"""
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+        return {
+            "input_dim": self.input_dim,
+            "hidden_dims": self.hidden_dims,
+            "dropout_rate": self.dropout_rate,
+            "total_parameters": total_params,
+            "trainable_parameters": trainable_params,
+        }
 
 
 class ImprovedPredictor(Predictor):
@@ -59,11 +71,12 @@ class ImprovedPredictor(Predictor):
     def __init__(
         self,
         input_dim,
-        hidden_dims=[256, 128, 64],
-        dropout_rate=0.4,
-        activation="swish",
+        hidden_dims=[128, 64],
+        dropout_rate=0.3,
+        activation="relu",
         use_batch_norm=True,
-        use_residual=True,
+        use_residual=False,
+        **kwargs,
     ):
         super().__init__(
             input_dim, hidden_dims, dropout_rate, activation, use_batch_norm
@@ -95,7 +108,7 @@ class ImprovedPredictor(Predictor):
                     residual = getattr(self, f"residual_proj_{i}")(residual)
                 if x.shape == residual.shape:
                     x += residual
-        return super().forward(x)  # Or custom output
+        return super().forward(x)
 
 
 class FocalLoss(nn.Module):
