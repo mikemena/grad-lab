@@ -1,3 +1,4 @@
+import os
 import argparse
 import yaml
 import torch
@@ -78,7 +79,7 @@ class ModelTrainer:
                 num_batches += 1
         return total_loss / num_batches
 
-    def train(self, train_loader, val_loader, **kwargs):
+    def train(self, train_loader, val_loader, config, **kwargs):
         """Train the model with early stopping."""
         epochs = kwargs.get("epochs", 50)
         lr = kwargs.get("lr", 0.001)
@@ -86,7 +87,8 @@ class ModelTrainer:
         patience = kwargs.get("patience", 10)
         min_delta = kwargs.get("min_delta", 1e-4)
         optimizer_name = kwargs.get("optimizer_name", "Adam")
-        save_path = kwargs.get("save_path", "best_model.pt")
+        save_dir = config["preprocessing"]["save_dir"]
+        save_path = os.path.join(save_dir, "best_model.pt")
 
         if optimizer_name == "Adam":
             optimizer = optim.Adam(
@@ -275,7 +277,9 @@ def main(config_path):
     trainer.hypertune(train_loader, val_loader, input_dim)  # Pass input_dim
 
     # Train
-    training_results = trainer.train(train_loader, val_loader, **config["training"])
+    training_results = trainer.train(
+        train_loader, val_loader, config, **config["training"]
+    )
 
     logger.info("\n=== EVALUATING BEST MODEL ===")
     evaluator = ModelEvaluator(
