@@ -476,12 +476,15 @@ class DataPreprocessor:
                 else []
             ),
             "one_hot_encoder_params": one_hot_encoder_params,
+            "numerical_columns": getattr(self, "numerical_columns", []),
+            "categorical_columns": getattr(self, "categorical_columns", []),
         }
 
         # Save to JSON
         state_file = os.path.join(self.save_dir, "preprocessor_state.json")
         with open(state_file, "w") as f:
             json.dump(state, f, indent=2)
+        logger.info(f"State saved to {state_file}")
 
     def load_state(self, state_file=None):
         """Load preprocessing state from JSON"""
@@ -512,6 +515,8 @@ class DataPreprocessor:
             self.target_label_encoder.classes_ = np.array(
                 state["target_label_encoder_classes"]
             )
+        self.numerical_columns = state.get("numerical_columns", [])
+        self.categorical_columns = state.get("categorical_columns", [])
 
         # Load OneHotEncoder state
         one_hot_encoder_params = state.get("one_hot_encoder_params", {})
@@ -531,6 +536,8 @@ class DataPreprocessor:
             self.one_hot_encoder.drop_idx_ = None
 
         logger.info(f"✅ Loaded preprocessing state from {state_file}")
+        logger.info(f"Numerical columns: {self.numerical_columns}")
+        logger.info(f"Categorical columns: {self.categorical_columns}")
         logger.info(f"Features: {len(self.feature_columns)}")
         logger.info(f"Column mappings: {len(self.column_mappings)}")
         logger.info(f"Target encoding mappings: {len(self.target_encoding_mappings)}")
@@ -543,12 +550,18 @@ class DataPreprocessor:
         self, df, target_column, column_config, excel_filename=None
     ):
         """Convenience method for processing training data"""
+        self.numerical_columns = column_config.get("numerical", [])
+        self.categorical_columns = (
+            column_config.get("low_cardinality_categorical", [])
+            + column_config.get("high_cardinality_categorical", [])
+            + column_config.get("binary", [])
+        )
         logger.info("🎯 Processing training data...")
         return self.process_and_save(
             df=df,
             target_column=target_column,
             excel_filename=excel_filename or "training_processed.xlsx",
-            numerical_columns=column_config.get("numerical", []),
+            numerical_columns=self.numerical_columns,
             low_cardinality_categorical_columns=column_config.get(
                 "low_cardinality_categorical", []
             ),

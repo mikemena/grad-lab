@@ -11,8 +11,6 @@
 # Run train model
 `python src/train_model.py --config configs/model_v1.yaml`
 
-# Predict with test dataset
-`python src/predict.py --config configs/model_v2.yaml`
-
 # Predict with custom input
-`python src/predict.py --config configs/model_v2.yaml --input path/to/new_data.xlsx`
+
+`python src/predict.py --config configs/model_v2.yaml --input experiments/preprocessing/debug_splits/raw_test_split.xlsx`

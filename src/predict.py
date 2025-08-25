@@ -15,12 +15,14 @@ def load_unseen_data(file_path, preprocessor, config):
     df = pd.read_excel(file_path)  # Or pd.read_csv if CSV
     # Drop any irrelevant columns if needed (match training)
     X = df.values  # Assuming all columns are features
-    X_preprocessed = preprocessor.transform(X)  # Apply saved transformations
+    X_preprocessed = preprocessor.process_inference_data(
+        X
+    )  # Apply saved transformations
     X_tensor = torch.tensor(X_preprocessed, dtype=torch.float32)
     return X_tensor, df  # Return original df for output merging
 
 
-def main(config_path, input_path, output_path=None):
+def main(config_path, input_path=None, output_path=None):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
@@ -75,10 +77,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config")
     parser.add_argument(
-        "--input", type=str, required=True, help="Path to unseen data file"
+        "--input", type=str, default=None, help="Path to unseen data file"
     )
     parser.add_argument(
-        "--output", type=str, required=True, help="Path to save predictions (optional)"
+        "--output", type=str, default=None, help="Path to save predictions (optional)"
     )
     args = parser.parse_args()
     main(args.config, args.input, args.output)
