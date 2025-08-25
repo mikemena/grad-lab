@@ -42,6 +42,9 @@ def main(config_path, input_path=None, output_path=None):
     # Load preprocessor and model
     preprocessor = DataPreprocessor(save_dir=save_dir)
     preprocessor.load_state(state_file)
+    preprocessor.enable_excel_output(
+        False
+    )  # Disable saving Excel files during inference
 
     # Load and preprocess unseen data
     X_unseen, original_df = load_unseen_data(input_path, preprocessor, config)
