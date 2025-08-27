@@ -165,13 +165,35 @@ class DataPreprocessor:
     def handle_missing_values(self, df, numerical_columns, categorical_columns):
         """Fill missing values appropriately"""
         df = df.copy()
-        for col in numerical_columns:
-            if col in df.columns and df[col].isnull().any():
-                fill_value = df[col].median()
-                df[col] = df[col].fillna(fill_value)
-        for col in categorical_columns:
-            if col in df.columns and df[col].isnull().any():
-                df[col] = df[col].fillna("Unknown")
+        missing_perc = df.isnull().mean() * 100
+
+        for col in df.columns:
+            perc = missing_perc[col]
+            if perc > 80:
+                df = df.drop(col, axis=1) # Drop if > 80%
+                continue
+            elif perc > 20:
+                if col in categorical_columns:
+                    df[col] = df[col].fillna("Unknown") # Or consdier dropping
+                elif col in numerical_columns:
+                    df[col] = df[col].fillna(df[col].median()) # Conservative fill
+                continue
+
+            # For < 20%, use imputation
+            if col in numerical_columns and df[col].isnull().any():
+                if perc > 5: # Use KNN for 5-20%
+                    from sklearn.impute import KNNImputer
+                    imputer = KNNImputer(n_neighbors=5)
+                    df[[col]] = imputer.fit_transform(df[[col]])
+                else: # < 5% simple median
+                    df[col] = df[col].fillna(df[col].median())
+            elif col in categorical_columns and df[col].isnull().any():
+                if perc > 5: # Use 'unknown' or mode
+                    from sklearn.impute import SimpleImputer
+                    imputer = SimpleImputer(strategy='constant', fill_value='unknown')
+                    df[[col]] = imputer.fit_transform(df[[col]])
+                else:
+                    df[col] = df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else 'unnown')
         return df
 
     def scale_features(self, df, fit=True):
