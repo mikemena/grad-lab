@@ -55,3 +55,6 @@ README.md
 TODO.md
 /datasets/
 /experiments/
+evaluation_results/
+notebooks/
+logs/
