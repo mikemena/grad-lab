@@ -1,0 +1,41 @@
+# Use this model to test quickly
+model: # Model architecture
+  type: basic # 'basic' for Predictor, 'improved' for ImprovedPredictor
+  input_dim: 28
+  hidden_dims: [64]
+  dropout_rate: 0.3
+  activation: relu
+  use_batch_norm: false # Disable to reduce complexity
+  use_residual: false # Disable to reduce complexity
+
+training: # Training parameters
+  epochs: 50 # Reduced to speed up training
+  lr: 0.001 # Standard for Adam
+  loss_type: bce # 'bce', 'weighted_bce', 'focal'
+  alpha: 0.25 # For focal/weighted
+  gamma: 2.0
+  optimizer_name: Adam
+  weight_decay: 0.0
+  patience: 5 # Reduced patience for faster early stopping
+  min_delta: 0.0001
+  use_class_weights: true
+  use_scheduler: false
+  scheduler_type: cosine # If true
+  batch_size: 32
+
+tuning: # Optional section for hypertuning
+  enabled: false # Set to true to run tuning
+  lr_range: [0.0001, 0.001, 0.01]
+  hidden_dims_options: [[128], [256, 128], [512, 256, 128]]
+  dropout_range: [0.3, 0.4, 0.5]
+
+preprocessing:
+  save_dir: "experiments/preprocessing/artifacts"
+
+data:
+  filepath:
+    state: "experiments/preprocessing/artifacts/preprocessor_state.json"
+    train: "experiments/preprocessing/artifacts/bank_loans_train_processed.xlsx"
+    val: "experiments/preprocessing/artifacts/bank_loans_val_processed.xlsx"
+    test: "experiments/preprocessing/artifacts/bank_loans_test_processed.xlsx"
+  target_column: "personal_loan"

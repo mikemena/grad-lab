@@ -170,30 +170,34 @@ class DataPreprocessor:
         for col in df.columns:
             perc = missing_perc[col]
             if perc > 80:
-                df = df.drop(col, axis=1) # Drop if > 80%
+                df = df.drop(col, axis=1)  # Drop if > 80%
                 continue
             elif perc > 20:
                 if col in categorical_columns:
-                    df[col] = df[col].fillna("Unknown") # Or consdier dropping
+                    df[col] = df[col].fillna("Unknown")  # Or consdier dropping
                 elif col in numerical_columns:
-                    df[col] = df[col].fillna(df[col].median()) # Conservative fill
+                    df[col] = df[col].fillna(df[col].median())  # Conservative fill
                 continue
 
             # For < 20%, use imputation
             if col in numerical_columns and df[col].isnull().any():
-                if perc > 5: # Use KNN for 5-20%
+                if perc > 5:  # Use KNN for 5-20%
                     from sklearn.impute import KNNImputer
+
                     imputer = KNNImputer(n_neighbors=5)
                     df[[col]] = imputer.fit_transform(df[[col]])
-                else: # < 5% simple median
+                else:  # < 5% simple median
                     df[col] = df[col].fillna(df[col].median())
             elif col in categorical_columns and df[col].isnull().any():
-                if perc > 5: # Use 'unknown' or mode
+                if perc > 5:  # Use 'unknown' or mode
                     from sklearn.impute import SimpleImputer
-                    imputer = SimpleImputer(strategy='constant', fill_value='unknown')
+
+                    imputer = SimpleImputer(strategy="constant", fill_value="unknown")
                     df[[col]] = imputer.fit_transform(df[[col]])
                 else:
-                    df[col] = df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else 'unnown')
+                    df[col] = df[col].fillna(
+                        df[col].mode()[0] if not df[col].mode().empty else "unknown"
+                    )
         return df
 
     def scale_features(self, df, fit=True):
