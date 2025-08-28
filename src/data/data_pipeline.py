@@ -42,6 +42,7 @@ class DataPipeline:
         self,
         file_path,
         target_column,
+        drop_columns,
         test_size=0.2,
         val_size=0.2,
         random_state=42,
@@ -60,6 +61,18 @@ class DataPipeline:
 
         logger.info("\n2. LOADING RAW DATA...")
         df = pd.read_excel(file_path)
+        # Drop columns from configuration
+        logger.debug(f"Drop Columns: {drop_columns}")
+        if drop_columns:
+            missing_drops = [col for col in drop_columns if col not in df.columns]
+            if missing_drops:
+                logger.warning(f"Columns to drop not found: {missing_drops}")
+            df = df.drop(
+                columns=[col for col in drop_columns if col in df.columns],
+                errors="ignore",
+            )
+            logger.info(f"Dropped columns: {drop_columns}")
+
         # Reset index to ensure unique indices
         # df = df.reset_index(drop=True)
         # logger.info(f"✓ Loaded: {df.shape}")

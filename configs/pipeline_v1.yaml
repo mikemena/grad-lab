@@ -1,5 +1,8 @@
-file_path: "datasets/bank_loans.xlsx"
-target_column: "personal_loan"
+# file_path: "datasets/bank_loans.xlsx"
+# target_column: "personal_loan"
+file_path: "datasets/titanic.xlsx"
+target_column: "Survived"
+drop_columns: ["PassengerId", "Name"]
 splits:
   test_size: 0.2
   val_size: 0.2

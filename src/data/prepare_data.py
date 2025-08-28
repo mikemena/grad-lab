@@ -27,6 +27,7 @@ def prepare_training_data(config):
         pipeline.prepare_training_data_with_splits(
             config["file_path"],
             target_column=config["target_column"],
+            drop_columns=config["drop_columns"],
             test_size=config["splits"]["test_size"],
             val_size=config["splits"]["val_size"],
             random_state=config["random_state"],
