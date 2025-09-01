@@ -150,77 +150,34 @@ def generate_recommendations(series, recommended_type, stats):
 
 
 def get_missing_value_recommendations(stats, recommended_type):
-    """Generate recommendations for handling missing values aligned with preprocessor logic"""
+    """Generate recommendations for handling missing values"""
     recommendations = []
+    missing_count = stats["missing_count"]
     missing_percentage = stats["missing_percentage"]
 
-    if missing_percentage == 0:
-        return recommendations  # No missing values, no recommendations
-
-    if missing_percentage > 80:
-        recommendations.append(f"Drop column (>{missing_percentage:.1f}% missing)")
-    elif missing_percentage > 20:
-        if recommended_type == "numerical":
+    if missing_count > 0:
+        if missing_percentage > 50:
             recommendations.append(
-                "Fill missing values with median (conservative for high missingness)"
+                f"Consider dropping column (>{missing_percentage:.1f}% missing)"
             )
+        elif recommended_type == "numerical":
+            recommendations.append("Fill missing values with mean/median")
         elif recommended_type in [
             "low_cardinality_categorical",
             "high_cardinality_categorical",
             "binary",
         ]:
-            recommendations.append("Fill missing values with 'Unknown' category")
+            recommendations.append(
+                "Fill missing values with mode or 'Unknown' category"
+            )
         elif recommended_type == "datetime":
             recommendations.append(
-                "Fill missing dates with forward/backward fill (conservative)"
+                "Fill missing dates with forward/backward fill or interpolation"
             )
-        else:  # Text or other
+        else:
             recommendations.append(
                 "Fill missing text values with 'Unknown' or empty string"
             )
-    else:  # <=20% missing
-        if missing_percentage > 5:
-            # Advanced imputation for 5-20%
-            if recommended_type == "numerical":
-                recommendations.append(
-                    "Use KNN imputation (predictive for medium missingness)"
-                )
-            elif recommended_type in [
-                "low_cardinality_categorical",
-                "high_cardinality_categorical",
-                "binary",
-            ]:
-                recommendations.append(
-                    "Fill missing values with 'Unknown' or use predictive imputation"
-                )
-            elif recommended_type == "datetime":
-                recommendations.append("Fill missing dates with interpolation")
-            else:  # Text
-                recommendations.append("Fill missing text values with 'Unknown'")
-        else:
-            # Simple imputation for <5%
-            if recommended_type == "numerical":
-                recommendations.append("Fill missing values with median")
-            elif recommended_type in [
-                "low_cardinality_categorical",
-                "high_cardinality_categorical",
-                "binary",
-            ]:
-                recommendations.append(
-                    "Fill missing values with mode or 'Unknown' category"
-                )
-            elif recommended_type == "datetime":
-                recommendations.append("Fill missing dates with forward/backward fill")
-            else:  # Text
-                recommendations.append(
-                    "Fill missing text values with 'Unknown' or empty string"
-                )
-
-    # Optional: Add a general note if missingness might be informative
-    if missing_percentage > 0:
-        recommendations.append(
-            "Consider adding a binary flag column (e.g., 'is_missing') if missingness is informative"
-        )
 
     return recommendations
 

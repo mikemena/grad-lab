@@ -49,7 +49,7 @@ class Predictor(nn.Module):
         self.network = nn.Sequential(*layers)
 
     def forward(self, x):
-        return self.network(x).squeeze()
+        return self.network(x).squeeze()  # Returns raw logit, not probability
 
     def get_model_info(self):
         """Return model architecture information"""
@@ -66,8 +66,6 @@ class Predictor(nn.Module):
 
 
 class ImprovedPredictor(Predictor):
-    """Enhanced version with residuals and input norm (from v4)."""
-
     def __init__(
         self,
         input_dim,

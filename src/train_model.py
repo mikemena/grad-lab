@@ -19,8 +19,6 @@ logger = setup_logger(__name__, include_location=True)
 
 
 class ModelTrainer:
-    """Unified trainer (consolidate from v1-v4)."""
-
     def __init__(self, model, config, device=None):
         self.model = model
         self.config = config
@@ -109,9 +107,11 @@ class ModelTrainer:
             val_loss = self.validate(val_loader, self.criterion)
             self.train_losses.append(train_loss)
             self.val_losses.append(val_loss)
+            # Early stopping logic
             if val_loss < best_val_loss - min_delta:
                 best_val_loss = val_loss
                 patience_counter = 0
+                # Save the best model
                 torch.save({"model_state_dict": self.model.state_dict()}, save_path)
             else:
                 patience_counter += 1
@@ -291,8 +291,8 @@ def main(config_path):
 
     # Save results
     results = {
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "model_config": model.get_model_info(),
+        "date": datetime.now().strftime("%m-%d-%Y %H:%M"),
+        "model_config": config["model"],
         "training_results": training_results,
         "test_metrics": {
             "accuracy": metrics["accuracy"],
