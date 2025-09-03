@@ -23,7 +23,7 @@ training: # Training parameters
   scheduler_type: cosine # If true
   batch_size: 32
 
-tuning: # Optional section for hypertuning
+tuning: # grid search
   enabled: false # Set to true to run tuning
   lr_range: [0.0001, 0.001, 0.01]
   hidden_dims_options: [[128], [256, 128], [512, 256, 128]]
@@ -32,10 +32,13 @@ tuning: # Optional section for hypertuning
 preprocessing:
   save_dir: "experiments/preprocessing/artifacts"
 
+inference:
+  decision_threshold: 0.4
+
 data:
   filepath:
     state: "experiments/preprocessing/artifacts/preprocessor_state.json"
     train: "experiments/preprocessing/artifacts/bank_loans_train_processed.xlsx"
     val: "experiments/preprocessing/artifacts/bank_loans_val_processed.xlsx"
-    test: "experiments/preprocessing/artifacts/bank_loans_test_processed.xlsx"
+    test: "experiments/preprocessing/debug_splits/raw_test.xlsx"
   target_column: "personal_loan"

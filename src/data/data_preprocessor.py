@@ -304,8 +304,8 @@ class DataPreprocessor:
         original_shape = features_df.shape
 
         # Add temporary index for inference data to ensure row matching, only if not already present
-        if not fit and "temp_index" not in features_df.columns:
-            features_df["temp_index"] = np.arange(len(features_df))
+        # if not fit and "temp_index" not in features_df.columns:
+        #     features_df["temp_index"] = np.arange(len(features_df))
 
         # Step 1: Handle missing values
         if numerical_columns or low_cardinality_categorical_columns:
@@ -513,6 +513,8 @@ class DataPreprocessor:
         logger.info(f"State saved to {state_file}")
 
     def load_state(self, state_file=None):
+        logger.debug(f"load_state called with state_file: {state_file}")
+        state_file = state_file or self.state_file
         """Load preprocessing state from JSON"""
         # Use state_file as-is if it’s an absolute path or starts with project root
         if os.path.isabs(state_file) or state_file.startswith("experiments/"):
@@ -602,7 +604,9 @@ class DataPreprocessor:
     def process_inference_data(self, df, excel_filename=None):
         """Convenience method for processing inference data"""
         logger.info("Processing inference data...")
-        self.load_state()
+        # if not hasattr(self, "state_file") or self.state_file is None:
+        #     raise ValueError("Preprocessor state file not set")
+        # self.load_state(self.state_file)
         return self.process_and_save(
             df=df,
             target_column=None,

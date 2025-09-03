@@ -7,8 +7,6 @@ logger = setup_logger(__name__, include_location=True)
 
 
 class Predictor(nn.Module):
-    """Basic Feedforward Neural Network (from v1-v3)."""
-
     def __init__(
         self,
         input_dim,

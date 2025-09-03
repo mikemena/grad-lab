@@ -13,12 +13,14 @@ logger = setup_logger(__name__, include_location=True)
 def load_unseen_data(file_path, preprocessor, config):
     """Preprocess unseen data (no labels assumed)."""
     df = pd.read_excel(file_path)  # Or pd.read_csv if CSV
+    logger.debug("DataFrame Columns...")
+    logger.debug(f"{df.columns}")
     # Drop any irrelevant columns if needed (match training)
-    X = df.values  # Assuming all columns are features
-    X_preprocessed = preprocessor.process_inference_data(
-        X
-    )  # Apply saved transformations
-    X_tensor = torch.tensor(X_preprocessed, dtype=torch.float32)
+    target_column = config["data"]["target_column"]
+    if target_column in df.columns:
+        df = df.drop(columns=[target_column])
+    X_preprocessed = preprocessor.process_inference_data(df)
+    X_tensor = torch.tensor(X_preprocessed.values, dtype=torch.float32)
     return X_tensor, df  # Return original df for output merging
 
 
@@ -62,10 +64,12 @@ def main(config_path, input_path=None, output_path=None):
     model.eval()
 
     # Inference
+    binary_threshold = config["inference"]["decision_threshold"]
+    logger.info(f"Binary Threshold: {binary_threshold}")
     with torch.no_grad():
         outputs = model(X_unseen.to(device))
         probabilities = torch.sigmoid(outputs).cpu().numpy()
-        predictions = (probabilities > 0.5).astype(int)  # Binary threshold
+        predictions = (probabilities > binary_threshold).astype(int)  # Binary threshold
 
     # Prepare output
     original_df["probability"] = probabilities

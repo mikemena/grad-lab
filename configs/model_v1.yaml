@@ -8,21 +8,21 @@ model: # Model architecture
   use_residual: true
 
 training: # Training parameters
-  epochs: 100
+  epochs: 50
   lr: 0.001
-  loss_type: focal # 'bce', 'weighted_bce', 'focal'
+  loss_type: bce # 'bce', 'weighted_bce', 'focal'
   alpha: 0.25 # For focal/weighted
   gamma: 2.0
   optimizer_name: Adam
   weight_decay: 0.0
-  patience: 10
+  patience: 5
   min_delta: 0.0001
-  use_class_weights: true
+  use_class_weights: false
   use_scheduler: false
   scheduler_type: cosine # If true
   batch_size: 32
 
-tuning: # Optional section for hypertuning
+tuning: # grid search
   enabled: false # Set to true to run tuning
   lr_range: [0.0001, 0.001, 0.01]
   hidden_dims_options: [[128], [256, 128], [512, 256, 128]]
@@ -31,10 +31,13 @@ tuning: # Optional section for hypertuning
 preprocessing:
   save_dir: "experiments/preprocessing/artifacts"
 
+inference:
+  decision_threshold: 0.4
+
 data:
   filepath:
     state: "experiments/preprocessing/artifacts/preprocessor_state.json"
-    train: "experiments/preprocessing/artifacts/bank_loans_train_processed.xlsx"
-    val: "experiments/preprocessing/artifacts/bank_loans_val_processed.xlsx"
-    test: "experiments/preprocessing/artifacts/bank_loans_test_processed.xlsx"
-  target_column: "personal_loan"
+    train: "experiments/preprocessing/artifacts/titanic_train_processed.xlsx"
+    val: "experiments/preprocessing/artifacts/titanic_val_processed.xlsx"
+    test: "experiments/preprocessing/debug_splits/raw_test.xlsx"
+  target_column: "Survived"
