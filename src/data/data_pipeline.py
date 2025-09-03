@@ -6,6 +6,7 @@ import sys
 from data_analyzer import analyze_dataset
 from data_preprocessor import DataPreprocessor
 from imblearn.over_sampling import SMOTE
+import numpy as np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import setup_logger
@@ -88,6 +89,10 @@ class DataPipeline:
         train_df, val_df, test_df = self._split_raw_dataframe(
             df, test_size, val_size, random_state, target_column
         )
+
+        # Add temp_index to validation and test splits for consistent merging
+        val_df["temp_index"] = np.arange(len(val_df))
+        test_df["temp_index"] = np.arange(len(test_df))
 
         # Debug: Verify split indices
         logger.info("DEBUG: Verifying split indices...")
