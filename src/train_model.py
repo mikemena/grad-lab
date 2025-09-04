@@ -187,7 +187,7 @@ def load_dataset(file_path, state_file, save_dir, config):
     preprocessor.load_state(state_file)
     df = pd.read_excel(file_path)
     target_column = config["data"]["target_column"]
-    X = df.drop([target_column, "temp_index"], axis=1, errors="ignore").values
+    X = df.drop([target_column], axis=1, errors="ignore").values
     y_raw = df[target_column].values
     if preprocessor.target_type in ["binary", "categorical"]:
         y = preprocessor.target_label_encoder.transform(y_raw)

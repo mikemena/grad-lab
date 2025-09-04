@@ -13,15 +13,36 @@ logger = setup_logger(__name__, include_location=True)
 def load_unseen_data(file_path, preprocessor, config):
     """Preprocess unseen data (no labels assumed)."""
     df = pd.read_excel(file_path)  # Or pd.read_csv if CSV
+    original_df = df.copy()  # Preserve full original for output
     logger.debug("DataFrame Columns...")
     logger.debug(f"{df.columns}")
-    # Drop any irrelevant columns if needed (match training)
+
+    # Drop irrelevant columns ONLY for preprocessing (target if present)
+    # This prevents them from affecting features, but they're kept in original_df
     target_column = config["data"]["target_column"]
-    if target_column in df.columns:
-        df = df.drop(columns=[target_column])
+    columns_to_drop = [col for col in [target_column] if col in df.columns]
+    if columns_to_drop:
+        df = df.drop(columns=columns_to_drop)
+        logger.info(f"Dropped columns for preprocessing: {columns_to_drop}")
+
+    # Align to expected features from state
+    expected_features = preprocessor.feature_columns  # From preprocessor_state.json
+    missing_cols = [col for col in expected_features if col not in df.columns]
+    extra_cols = [col for col in df.columns if col not in expected_features]
+    if missing_cols:
+        logger.warning(
+            f"Missing expected columns: {missing_cols}. Filling with defaults (e.g., 0 or NaN"
+        )
+        # df[col] = 0  # Or np.nan; adjust based on column
+    if extra_cols:
+        logger.warning(
+            f"Dropping extra columns: {extra_cols} (not in training features)"
+        )
+        df = df.drop(columns=extra_cols)
+
     X_preprocessed = preprocessor.process_inference_data(df)
     X_tensor = torch.tensor(X_preprocessed.values, dtype=torch.float32)
-    return X_tensor, df  # Return original df for output merging
+    return X_tensor, original_df  # Return preprocessed tensor and FULL original df
 
 
 def main(config_path, input_path=None, output_path=None):

@@ -13,4 +13,4 @@
 
 # Predict with custom input
 
-`python src/predict.py --config configs/model_v2.yaml --input experiments/preprocessing/debug_splits/raw_test_split.xlsx`
+`python src/predict.py --config configs/model_v1.yaml --input experiments/preprocessing/debug_splits/raw_test_split.xlsx`

@@ -216,6 +216,11 @@ class DataPreprocessor:
 
     def align_features(self, df, fit=True):
         """Ensure feature alignment between training and prediction"""
+        if not isinstance(df, pd.DataFrame):
+            logger.error(
+                f"Expected DataFrame, got {type(df)}. Ensure input is a DataFrame."
+            )
+            raise TypeError(f"Expected DataFrame, got {type(df)}.")
         if fit:
             self.feature_columns = df.columns.tolist()
         else:
@@ -228,8 +233,8 @@ class DataPreprocessor:
                 )
             missing_cols = set(self.feature_columns) - set(df.columns)
             for col in missing_cols:
-                df[col] = 0
-            df = df[self.feature_columns]
+                df[col] = 0  # Or np.nan, depending on column type
+            df = df[self.feature_columns]  # Reorder to match training
         return df
 
     def process_and_save(
@@ -303,10 +308,6 @@ class DataPreprocessor:
         # Store original shape for reporting
         original_shape = features_df.shape
 
-        # Add temporary index for inference data to ensure row matching, only if not already present
-        # if not fit and "temp_index" not in features_df.columns:
-        #     features_df["temp_index"] = np.arange(len(features_df))
-
         # Step 1: Handle missing values
         if numerical_columns or low_cardinality_categorical_columns:
             logger.info("Handling missing values...")
@@ -366,17 +367,14 @@ class DataPreprocessor:
             )
             logger.info("Saved pre-scaling DataFrame to before_scaling_debug.xlsx")
 
-        # Step 5: Align features and scale, excluding temp_index if present
+        # Step 5: Align features and scale
         logger.info("🔄 Aligning features...")
-        columns_to_process = [col for col in features_df.columns if col != "temp_index"]
-        features_to_process = features_df[columns_to_process]
-        features_to_process = self.align_features(features_to_process, fit=fit)
+        # columns_to_process = [col for col in features_df.columns if col != "temp_index"]
+        # features_to_process = features_df[columns_to_process]
+        features_to_process = self.align_features(features_df, fit=fit)
 
         logger.info("📊 Scaling features...")
         features_to_process = self.scale_features(features_to_process, fit=fit)
-
-        if not fit:
-            features_to_process["temp_index"] = features_df["temp_index"]
 
         features_df = features_to_process
         logger.info(
@@ -604,9 +602,6 @@ class DataPreprocessor:
     def process_inference_data(self, df, excel_filename=None):
         """Convenience method for processing inference data"""
         logger.info("Processing inference data...")
-        # if not hasattr(self, "state_file") or self.state_file is None:
-        #     raise ValueError("Preprocessor state file not set")
-        # self.load_state(self.state_file)
         return self.process_and_save(
             df=df,
             target_column=None,

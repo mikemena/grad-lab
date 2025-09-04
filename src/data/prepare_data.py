@@ -67,10 +67,6 @@ def prepare_training_data(config):
         # Create debug directory if it doesn't exist
         # os.makedirs(debug_dir, exist_ok=True)
 
-        # Add temp_index to validation and test raw splits for consistent merging in predictions
-        val_df["temp_index"] = np.arange(len(val_df))
-        test_df["temp_index"] = np.arange(len(test_df))
-
         train_df.to_excel(os.path.join(debug_dir, "raw_train_split.xlsx"), index=False)
         val_df.to_excel(os.path.join(debug_dir, "raw_val_split.xlsx"), index=False)
         test_df.to_excel(os.path.join(debug_dir, "raw_test_split.xlsx"), index=False)

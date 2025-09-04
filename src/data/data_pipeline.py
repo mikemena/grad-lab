@@ -90,10 +90,6 @@ class DataPipeline:
             df, test_size, val_size, random_state, target_column
         )
 
-        # Add temp_index to validation and test splits for consistent merging
-        val_df["temp_index"] = np.arange(len(val_df))
-        test_df["temp_index"] = np.arange(len(test_df))
-
         # Debug: Verify split indices
         logger.info("DEBUG: Verifying split indices...")
         train_indices = set(train_df.index)
