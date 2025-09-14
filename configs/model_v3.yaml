@@ -4,7 +4,7 @@ model: # Model architecture
   input_dim: 28
   hidden_dims: [64]
   dropout_rate: 0.3
-  activation: relu
+  activation: relu # relu, gelu, leaky_relu, swish
   use_batch_norm: false # Disable to reduce complexity
   use_residual: false # Disable to reduce complexity
 
@@ -14,7 +14,7 @@ training: # Training parameters
   loss_type: bce # 'bce', 'weighted_bce', 'focal'
   alpha: 0.25 # For focal/weighted
   gamma: 2.0
-  optimizer_name: Adam
+  optimizer_name: Adam # Adam, AdamW
   weight_decay: 0.0
   patience: 5 # Reduced patience for faster early stopping
   min_delta: 0.0001

@@ -6,7 +6,8 @@ import sys
 from data_analyzer import analyze_dataset
 from data_preprocessor import DataPreprocessor
 from imblearn.over_sampling import SMOTE
-import numpy as np
+import argparse
+import yaml
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import setup_logger
@@ -204,11 +205,11 @@ class DataPipeline:
         logger.info("✅ All split files found!")
         self.preprocessor.load_state()
 
-        def load_split(file_path, split_name):
+        def load_split(file_path, split_name, target_column):
             logger.info(f"📄 Loading {split_name}: {os.path.basename(file_path)}")
             df = pd.read_excel(file_path)
-            y = df["personal_loan"].values
-            X = df.drop("personal_loan", axis=1).values
+            y = df[target_column].values
+            X = df.drop(target_column, axis=1).values
             logger.info(f"Shape: {X.shape}")
             y = (
                 y
@@ -217,7 +218,7 @@ class DataPipeline:
             )
             return torch.FloatTensor(X), torch.FloatTensor(y)
 
-        X_train, y_train = load_split(train_file, "Training")
+        X_train, y_train = load_split(train_file, "Training", target_column)
         X_val, y_val = load_split(val_file, "Validation")
         X_test, y_test = load_split(test_file, "Test")
 
