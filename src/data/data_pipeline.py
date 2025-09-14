@@ -6,8 +6,6 @@ import sys
 from data_analyzer import analyze_dataset
 from data_preprocessor import DataPreprocessor
 from imblearn.over_sampling import SMOTE
-import argparse
-import yaml
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import setup_logger
@@ -16,10 +14,11 @@ logger = setup_logger(__name__, include_location=True)
 
 
 class DataPipeline:
-    def __init__(self, save_dir="experiments/preprocessing/artifacts"):
+    def __init__(self, save_dir="experiments/preprocessing/artifacts", config=None):
         self.preprocessor = DataPreprocessor(save_dir)
         self.column_config = None
         self.save_dir = save_dir
+        self.config = config
 
     # SMOTE (Synthetic Minority Oversampling Technique)
     def _detect_class_imbalance(self, y, imbalance_threshold=0.3):
@@ -51,6 +50,7 @@ class DataPipeline:
         apply_smote=False,
         imbalance_threshold=0.3,
     ):
+
         logger.info("=" * 70)
         logger.info("SPLIT EXCEL DATA PIPELINE - MAXIMUM TRANSPARENCY")
         logger.info("=" * 70)
@@ -218,6 +218,8 @@ class DataPipeline:
             )
             return torch.FloatTensor(X), torch.FloatTensor(y)
 
+        target_column = self.config["target_column"]
+        logger.debug(f"target_column in load_split: {target_column}")
         X_train, y_train = load_split(train_file, "Training", target_column)
         X_val, y_val = load_split(val_file, "Validation")
         X_test, y_test = load_split(test_file, "Test")

@@ -4,7 +4,6 @@ import sys
 import argparse
 import yaml
 from data_pipeline import DataPipeline
-import numpy as np
 import pandas as pd
 from hashlib import sha1
 
@@ -20,8 +19,11 @@ def prepare_training_data(config):
     save_dir = config.get("preprocessing", {}).get(
         "save_dir", "preprocessing_artifacts"
     )
+    config = config
+    logger.debug(f"Config: {config}")
+
     logger.debug(f"save_dir from config: {save_dir}")
-    pipeline = DataPipeline(save_dir=save_dir)
+    pipeline = DataPipeline(save_dir=save_dir, config=config)
 
     X_train, X_val, X_test, y_train, y_val, y_test, train_df, val_df, test_df = (
         pipeline.prepare_training_data_with_splits(
