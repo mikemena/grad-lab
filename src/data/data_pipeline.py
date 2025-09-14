@@ -19,8 +19,56 @@ class DataPipeline:
         self.column_config = None
         self.save_dir = save_dir
         self.config = config
+        if config is not None:
+            self._validate_config()
+        logger.debug(f"Entire config: {self.config}")
 
-    # SMOTE (Synthetic Minority Oversampling Technique)
+    def _validate_config(self):
+        """Validate and extract relevant config sections."""
+        required_keys = [
+            "file_path",
+            "target_column",
+            "drop_columns",
+            "splits",
+            "imbalance",
+            "output",
+        ]
+        for key in required_keys:
+            if key not in self.config:
+                raise ValueError(f"Missing required config key: {key}")
+
+        # Extract and validate splits
+        self.splits = self.config.get("splits", {})
+        if "test_size" not in self.splits or "val_size" not in self.splits:
+            raise ValueError("Config 'splits' must contain 'test_size' and 'val_size'")
+        if not (0 < self.splits["test_size"] < 1) or not (
+            0 < self.splits["val_size"] < 1
+        ):
+            raise ValueError("Split sizes must be between 0 and 1")
+
+        # Extract and validate imbalance
+        self.imbalance = self.config.get("imbalance", {})
+        self.imbalance["apply_smote"] = self.imbalance.get("apply_smote", False)
+        self.imbalance["threshold"] = self.imbalance.get("threshold", 0.3)
+
+        # Extract and validate output
+        self.output = self.config.get("output", {})
+        self.output["save_processed_data"] = self.output.get(
+            "save_processed_data", True
+        )
+        self.output["debug_splits"] = self.output.get("debug_splits", True)
+        self.output["debug_splits_dir"] = self.output.get(
+            "debug_splits_dir", "debug_splits"
+        )
+
+        # Derive base_filename from file_path if not provided
+        if "base_filename" not in self.config:
+            self.config["base_filename"] = os.path.splitext(
+                os.path.basename(self.config["file_path"])
+            )[0]
+
+        logger.info("Config validated successfully")
+
     def _detect_class_imbalance(self, y, imbalance_threshold=0.3):
         if isinstance(y, pd.Series):
             y = y.values
@@ -31,7 +79,6 @@ class DataPipeline:
         logger.info(f"Class distribution before SMOTE: {distribution}")
         return is_imbalanced, distribution
 
-    # SMOTE (Synthetic Minority Oversampling Technique)
     def _apply_smote(self, X, y, random_state=42):
         logger.info("Applying SMOTE to training data...")
         smote = SMOTE(random_state=random_state)
@@ -41,29 +88,42 @@ class DataPipeline:
 
     def prepare_training_data_with_splits(
         self,
-        file_path,
-        target_column,
-        drop_columns,
-        test_size=0.2,
-        val_size=0.2,
+        file_path=None,
+        target_column=None,
+        drop_columns=None,
+        test_size=None,
+        val_size=None,
         random_state=42,
-        apply_smote=False,
-        imbalance_threshold=0.3,
+        apply_smote=None,
+        imbalance_threshold=None,
     ):
+        # Use config values if parameters are not provided
+        file_path = file_path or self.config.get("file_path")
+        target_column = target_column or self.config.get("target_column")
+        drop_columns = drop_columns or self.config.get("drop_columns", [])
+        test_size = test_size or self.splits.get("test_size")
+        val_size = val_size or self.splits.get("val_size")
+        apply_smote = (
+            apply_smote
+            if apply_smote is not None
+            else self.imbalance.get("apply_smote")
+        )
+        imbalance_threshold = (
+            imbalance_threshold
+            if imbalance_threshold is not None
+            else self.imbalance.get("threshold")
+        )
 
         logger.info("=" * 70)
         logger.info("SPLIT EXCEL DATA PIPELINE - MAXIMUM TRANSPARENCY")
         logger.info("=" * 70)
-        logger.info(
-            f" target column parameter from prepare_training_data_with_splits, {target_column}"
-        )
+        logger.info(f"Target column: {target_column}")
         logger.info("\n1. ANALYZING DATASET STRUCTURE...")
         analysis = analyze_dataset(file_path)
         logger.info(f"✓ Raw data shape: {analysis['shape']}")
 
         logger.info("\n2. LOADING RAW DATA...")
         df = pd.read_excel(file_path)
-        # Drop columns from configuration
         logger.debug(f"Drop Columns: {drop_columns}")
         if drop_columns:
             missing_drops = [col for col in drop_columns if col not in df.columns]
@@ -74,10 +134,6 @@ class DataPipeline:
                 errors="ignore",
             )
             logger.info(f"Dropped columns: {drop_columns}")
-
-        # Reset index to ensure unique indices
-        # df = df.reset_index(drop=True)
-        # logger.info(f"✓ Loaded: {df.shape}")
 
         if target_column not in df.columns:
             raise ValueError(f"Target column '{target_column}' not found in dataset")
@@ -91,7 +147,6 @@ class DataPipeline:
             df, test_size, val_size, random_state, target_column
         )
 
-        # Debug: Verify split indices
         logger.info("DEBUG: Verifying split indices...")
         train_indices = set(train_df.index)
         val_indices = set(val_df.index)
@@ -103,12 +158,10 @@ class DataPipeline:
             logger.warning(
                 f"Train-Val overlap: {len(train_indices & val_indices)} indices"
             )
-
         if train_indices & test_indices:
             logger.warning(
                 f"Train-Test overlap: {len(train_indices & test_indices)} indices"
             )
-
         if val_indices & test_indices:
             logger.warning(
                 f"Val-Test overlap: {len(val_indices & test_indices)} indices"
@@ -181,10 +234,14 @@ class DataPipeline:
 
         return X_train, X_val, X_test, y_train, y_val, y_test, train_df, val_df, test_df
 
-    def load_split_data_for_training(self, base_filename):
+    def load_split_data_for_training(self, base_filename=None):
         logger.info("=" * 70)
         logger.info("LOADING PRE-SPLIT EXCEL FILES FOR TRAINING")
         logger.info("=" * 70)
+
+        base_filename = base_filename or self.config.get("base_filename")
+        if base_filename is None:
+            raise ValueError("base_filename must be provided or specified in config")
 
         train_file = os.path.join(
             self.save_dir, f"{base_filename}_train_processed.xlsx"
@@ -221,15 +278,14 @@ class DataPipeline:
         target_column = self.config["target_column"]
         logger.debug(f"target_column in load_split: {target_column}")
         X_train, y_train = load_split(train_file, "Training", target_column)
-        X_val, y_val = load_split(val_file, "Validation")
-        X_test, y_test = load_split(test_file, "Test")
+        X_val, y_val = load_split(val_file, "Validation", target_column)
+        X_test, y_test = load_split(test_file, "Test", target_column)
 
         return X_train, X_val, X_test, y_train, y_val, y_test
 
     def _split_raw_dataframe(
         self, df: pd.DataFrame, test_size, val_size, random_state, target_column
     ):
-        """Split raw DataFrame into train/val/test before preprocessing"""
         df = df.sample(frac=1, random_state=random_state).reset_index(drop=True)
         df = df.reset_index(drop=True)
         stratify = (
@@ -264,7 +320,7 @@ class DataPipeline:
             low_cardinality_categorical_columns=self.column_config.get(
                 "low_cardinality_categorical", []
             ),
-            high_cardinality_categorical_columns=self.column_config.get(
+            high_cardinality_categorical_columns=self.config.get(
                 "high_cardinality_categorical", []
             ),
             binary_columns=self.column_config.get("binary", []),
@@ -306,13 +362,21 @@ class DataPipeline:
         return config
 
 
-def prepare_split_training_data(file_path, target_column="personal_loan", **kwargs):
-    pipeline = DataPipeline()
+def prepare_split_training_data(config, **kwargs):
+    pipeline = DataPipeline(config=config)
     return pipeline.prepare_training_data_with_splits(
-        file_path, target_column, **kwargs
+        file_path=config["file_path"],
+        target_column=config["target_column"],
+        drop_columns=config["drop_columns"],
+        test_size=config["splits"]["test_size"],
+        val_size=config["splits"]["val_size"],
+        random_state=config["random_state"],
+        apply_smote=config["imbalance"]["apply_smote"],
+        imbalance_threshold=config["imbalance"]["threshold"],
+        **kwargs,
     )
 
 
-def load_split_training_data(base_filename="loan"):
-    pipeline = DataPipeline()
-    return pipeline.load_split_data_for_training(base_filename)
+def load_split_training_data(config):
+    pipeline = DataPipeline(config=config)
+    return pipeline.load_split_data_for_training()
