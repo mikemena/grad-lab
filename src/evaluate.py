@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import pandas as pd
+import yaml
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -29,14 +30,21 @@ logger = setup_logger(__name__, include_location=True)
 
 
 class ModelEvaluator:
-    def __init__(self, model=None, device=None, save_dir="evaluation_results"):
+    def __init__(
+        self, model=None, device=None, save_dir="evaluation_results", config_path=None
+    ):
         self.model = model
         self.device = device or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         self.metrics_history = []
         self.save_dir = save_dir
+        self.config_path = config_path
         os.makedirs(self.save_dir, exist_ok=True)
+        if config_path:
+            logger.info(f"ModelEvaluator initialized with config_path: {config_path}")
+        else:
+            logger.warning("No config_path provided; config file will not be updated.")
 
     def _convert_to_serializable(self, obj):
         """Recursively convert non-serializable objects to JSON-serializable types."""
@@ -82,8 +90,31 @@ class ModelEvaluator:
         probabilities = np.array(probabilities).flatten()
         targets = np.array(targets).flatten()
 
-        # Compute comprehensive metrics
+        # Check if target type is consistent with binary classification
+        if not np.all(np.isin(targets, [0, 1])):
+            logger.warning(
+                "Target values contain non-binary values; expected binary classification targets (0 or 1)."
+            )
+
+        # Compute comprehensive metrics with default threshold (0.5)
         metrics = self.comprehensive_evaluation(targets, probabilities, predictions)
+
+        # Optimize threshold for recall
+        optimal_recall_threshold, optimal_recall_score, thresholds, scores = (
+            self.optimize_threshold(targets, probabilities, metric="recall")
+        )
+        metrics["optimal_recall_threshold"] = optimal_recall_threshold
+        metrics["optimal_recall_score"] = optimal_recall_score
+
+        # Recompute metrics with optimal recall threshold
+        y_pred_new = (probabilities >= optimal_recall_threshold).astype(int)
+        new_metrics = self.comprehensive_evaluation(targets, probabilities, y_pred_new)
+        logger.info(
+            f"Metrics with optimal recall threshold ({optimal_recall_threshold:.2f}):"
+        )
+        logger.info(
+            f"Recall: {new_metrics['recall']:.4f}, Precision: {new_metrics['precision']:.4f}, F1: {new_metrics['f1']:.4f}"
+        )
 
         # Perform business impact analysis
         business_analyzer = BusinessImpactAnalyzer()
@@ -118,23 +149,19 @@ class ModelEvaluator:
         """Compute comprehensive evaluation metrics"""
         try:
             metrics = {
-                # Basic metrics
                 "accuracy": accuracy_score(y_true, y_pred_binary),
-                "precision": precision_score(y_true, y_pred_binary),
-                "recall": recall_score(y_true, y_pred_binary),
-                "f1": f1_score(y_true, y_pred_binary),
-                "f2": fbeta_score(y_true, y_pred_binary, beta=2),
-                # Advanced metrics
+                "precision": precision_score(y_true, y_pred_binary, zero_division=0),
+                "recall": recall_score(y_true, y_pred_binary, zero_division=0),
+                "f1": f1_score(y_true, y_pred_binary, zero_division=0),
+                "f2": fbeta_score(y_true, y_pred_binary, beta=2, zero_division=0),
                 "matthews_corrcoef": matthews_corrcoef(y_true, y_pred_binary),
                 "log_loss": log_loss(y_true, y_pred_proba),
                 "average_precision": average_precision_score(y_true, y_pred_proba),
                 "roc_auc": roc_auc_score(y_true, y_pred_proba),
-                # Business metrics
                 "precision_at_k": self.precision_at_k(y_true, y_pred_proba, k=100),
                 "lift_at_k": self.lift_at_k(y_true, y_pred_proba, k=100),
             }
 
-            # Confusion matrix components
             tn, fp, fn, tp = confusion_matrix(y_true, y_pred_binary).ravel()
             metrics.update(
                 {
@@ -149,9 +176,8 @@ class ModelEvaluator:
                 }
             )
 
-            # Classification report
             metrics["classification_report"] = classification_report(
-                y_true, y_pred_binary, output_dict=True
+                y_true, y_pred_binary, output_dict=True, zero_division=0
             )
 
             return metrics
@@ -170,7 +196,7 @@ class ModelEvaluator:
         baseline_precision = np.mean(y_true)
         return precision_at_k / baseline_precision if baseline_precision > 0 else 0
 
-    def optimize_threshold(self, y_true, y_pred_proba, metric="f1"):
+    def optimize_threshold(self, y_true, y_pred_proba, metric="recall"):
         """Find optimal threshold for binary classification"""
         thresholds = np.arange(0.1, 0.9, 0.01)
         scores = []
@@ -178,13 +204,13 @@ class ModelEvaluator:
         for threshold in thresholds:
             y_pred = (y_pred_proba >= threshold).astype(int)
             if metric == "f1":
-                score = f1_score(y_true, y_pred)
+                score = f1_score(y_true, y_pred, zero_division=0)
             elif metric == "f2":
-                score = fbeta_score(y_true, y_pred, beta=2)
+                score = fbeta_score(y_true, y_pred, beta=2, zero_division=0)
             elif metric == "precision":
-                score = precision_score(y_true, y_pred)
+                score = precision_score(y_true, y_pred, zero_division=0)
             elif metric == "recall":
-                score = recall_score(y_true, y_pred)
+                score = recall_score(y_true, y_pred, zero_division=0)
             elif metric == "matthews":
                 score = matthews_corrcoef(y_true, y_pred)
             else:
@@ -234,7 +260,6 @@ class ModelEvaluator:
     def plot_evaluation_metrics(self, metrics, targets, probabilities, feature_names):
         """Generate and save evaluation plots"""
         try:
-            # Confusion Matrix
             plt.figure(figsize=(8, 6))
             cm = confusion_matrix(targets, (probabilities >= 0.5).astype(int))
             sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
@@ -242,7 +267,6 @@ class ModelEvaluator:
             plt.savefig(os.path.join(self.save_dir, "confusion_matrix.png"))
             plt.close()
 
-            # ROC Curve
             fpr, tpr, _ = roc_curve(targets, probabilities)
             plt.figure(figsize=(8, 6))
             plt.plot(fpr, tpr, label=f'ROC AUC = {metrics["roc_auc"]:.4f}')
@@ -254,20 +278,30 @@ class ModelEvaluator:
             plt.savefig(os.path.join(self.save_dir, "roc_curve.png"))
             plt.close()
 
-            # Precision-Recall Curve
-            precision, recall, _ = precision_recall_curve(targets, probabilities)
+            precision, recall, thresholds = precision_recall_curve(
+                targets, probabilities
+            )
             plt.figure(figsize=(8, 6))
             plt.plot(
                 recall, precision, label=f'AP = {metrics["average_precision"]:.4f}'
+            )
+            optimal_recall_threshold = metrics.get("optimal_recall_threshold", 0.5)
+            idx = np.argmin(np.abs(thresholds - optimal_recall_threshold))
+            plt.scatter(
+                recall[idx],
+                precision[idx],
+                color="red",
+                s=100,
+                label=f"Optimal Recall Threshold = {optimal_recall_threshold:.2f}",
             )
             plt.xlabel("Recall")
             plt.ylabel("Precision")
             plt.title("Precision-Recall Curve")
             plt.legend()
+            plt.grid(True)
             plt.savefig(os.path.join(self.save_dir, "precision_recall_curve.png"))
             plt.close()
 
-            # Metrics Bar Plot
             metric_names = [
                 "accuracy",
                 "precision",
@@ -288,7 +322,7 @@ class ModelEvaluator:
             logger.error(f"Error in plotting evaluation metrics: {str(e)}")
 
     def save_evaluation_results(self, metrics, targets, probabilities):
-        """Save evaluation results to JSON"""
+        """Save evaluation results to JSON and update config with optimal threshold"""
         results = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "metrics": self._convert_to_serializable(metrics),
@@ -300,6 +334,40 @@ class ModelEvaluator:
         logger.info(
             f"Evaluation results saved to {self.save_dir}/evaluation_results.json"
         )
+
+        if self.config_path:
+            try:
+                logger.debug(f"Metrics dictionary keys: {list(metrics.keys())}")
+                logger.debug(f"Attempting to update config file: {self.config_path}")
+                if "optimal_recall_threshold" not in metrics:
+                    logger.error("Key 'optimal_recall_threshold' not found in metrics")
+                    raise KeyError("optimal_recall_threshold")
+                with open(self.config_path, "r") as f:
+                    config = yaml.safe_load(f)
+                if not config:
+                    logger.error(f"Config file {self.config_path} is empty or invalid")
+                    raise ValueError(f"Invalid config file: {self.config_path}")
+                if "inference" not in config:
+                    logger.error("No 'inference' section in config file")
+                    raise KeyError("inference")
+                if "decision_threshold" not in config["inference"]:
+                    logger.error("No 'decision_threshold' key in config['inference']")
+                    raise KeyError("decision_threshold")
+                config["inference"]["decision_threshold"] = float(
+                    metrics["optimal_recall_threshold"]
+                )
+                with open(self.config_path, "w") as f:
+                    yaml.safe_dump(config, f)
+                logger.info(
+                    f"Updated config {self.config_path} with optimal recall threshold: {metrics['optimal_recall_threshold']:.2f}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to update config file {self.config_path}: {str(e)}"
+                )
+                raise
+        else:
+            logger.warning("No config_path provided; skipping config update")
 
     def plot_training_history(
         self,

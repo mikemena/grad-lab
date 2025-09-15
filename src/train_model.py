@@ -130,7 +130,7 @@ class ModelTrainer:
             "val_losses": self.val_losses,
         }
 
-    def hypertune(self, train_loader, val_loader, input_dim):
+    def hypertune(self, train_loader, val_loader, input_dim, config):
         """Run simple grid search if tuning enabled."""
         if not self.config["tuning"]["enabled"]:
             return
@@ -147,7 +147,9 @@ class ModelTrainer:
                     temp_config["model"]["dropout_rate"] = dropout
                     temp_model = instantiate_model(temp_config["model"], input_dim)
                     temp_trainer = ModelTrainer(temp_model, temp_config)
-                    results = temp_trainer.train(train_loader, val_loader, lr=lr)
+                    results = temp_trainer.train(
+                        train_loader, val_loader, lr=lr, config=config
+                    )
                     if results["best_val_loss"] < best_val_loss:
                         best_val_loss = results["best_val_loss"]
                         best_params = {
@@ -274,7 +276,7 @@ def main(config_path):
 
     # Trainer
     trainer = ModelTrainer(model, config)
-    trainer.hypertune(train_loader, val_loader, input_dim)  # Pass input_dim
+    trainer.hypertune(train_loader, val_loader, input_dim, config)
 
     # Train
     training_results = trainer.train(
@@ -283,7 +285,10 @@ def main(config_path):
 
     logger.info("\n=== EVALUATING BEST MODEL ===")
     evaluator = ModelEvaluator(
-        model=model, device=trainer.device, save_dir="evaluation_results"
+        model=model,
+        device=trainer.device,
+        save_dir="evaluation_results",
+        config_path=config_path,
     )
     metrics, predictions, probabilities, targets = evaluator.evaluate(
         test_loader, feature_names=feature_names
