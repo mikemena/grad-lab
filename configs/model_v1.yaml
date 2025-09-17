@@ -1,53 +1,43 @@
-data:
-  filepath:
-    state: experiments/preprocessing/artifacts/preprocessor_state.json
-    test: experiments/preprocessing/artifacts/titanic_test_processed.xlsx
-    train: experiments/preprocessing/artifacts/titanic_train_processed.xlsx
-    val: experiments/preprocessing/artifacts/titanic_val_processed.xlsx
-  target_column: Survived
-inference:
-  decision_threshold: 0.1
-model:
-  activation: relu
-  dropout_rate: 0.4
-  hidden_dims:
-  - 256
-  - 128
-  - 64
+model: # Model architecture
+  type: basic # 'basic' for Predictor, 'improved' for ImprovedPredictor
   input_dim: 28
-  type: basic
+  hidden_dims: [256, 128, 64]
+  dropout_rate: 0.4
+  activation: relu # relu, gelu, leaky_relu, swish
   use_batch_norm: true
   use_residual: true
-preprocessing:
-  save_dir: experiments/preprocessing/artifacts
-training:
-  alpha: 0.25
-  batch_size: 32
-  epochs: 50
-  gamma: 2.0
-  loss_type: bce
+
+training: # Training parameters
+  epochs: 100
   lr: 0.001
-  min_delta: 0.0001
-  optimizer_name: Adam
-  patience: 5
-  scheduler_type: cosine
-  use_class_weights: false
-  use_scheduler: false
+  loss_type: bce # 'bce', 'weighted_bce', 'focal'
+  alpha: 0.25 # For focal/weighted
+  gamma: 2.0
+  optimizer_name: Adam # Adam, AdamW
   weight_decay: 0.0
-tuning:
-  dropout_range:
-  - 0.3
-  - 0.4
-  - 0.5
-  enabled: false
-  hidden_dims_options:
-  - - 128
-  - - 256
-    - 128
-  - - 512
-    - 256
-    - 128
-  lr_range:
-  - 0.0001
-  - 0.001
-  - 0.01
+  patience: 10
+  min_delta: 0.0001
+  use_class_weights: true
+  use_scheduler: false
+  scheduler_type: cosine # If true
+  batch_size: 32
+
+tuning: # grid search
+  enabled: false # Set to true to run tuning
+  lr_range: [0.0005, 0.001, 0.005, 0.01]
+  hidden_dims_options: [[128], [256, 128], [512, 256, 128]]
+  dropout_range: [0.2, 0.3, 0.4, 0.5]
+
+preprocessing:
+  save_dir: "experiments/preprocessing/artifacts"
+
+inference:
+  decision_threshold: 0.1
+
+data:
+  filepath:
+    state: "experiments/preprocessing/artifacts/preprocessor_state.json"
+    train: "experiments/preprocessing/artifacts/titanic_train_processed.xlsx"
+    val: "experiments/preprocessing/artifacts/titanic_val_processed.xlsx"
+    test: "experiments/preprocessing/artifacts/titanic_test_processed.xlsx"
+  target_column: "Survived"

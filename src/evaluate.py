@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import pandas as pd
-import yaml
+from ruamel.yaml import YAML
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -342,8 +342,15 @@ class ModelEvaluator:
                 if "optimal_recall_threshold" not in metrics:
                     logger.error("Key 'optimal_recall_threshold' not found in metrics")
                     raise KeyError("optimal_recall_threshold")
+
+                yaml_parser = YAML()
+                yaml_parser.preserve_quotes = True
+                # Force flow style for sequences (lists/arrays)
+                yaml_parser.default_flow_style = None  # Preserve original style
+
                 with open(self.config_path, "r") as f:
-                    config = yaml.safe_load(f)
+                    config = yaml_parser.load(f)
+
                 if not config:
                     logger.error(f"Config file {self.config_path} is empty or invalid")
                     raise ValueError(f"Invalid config file: {self.config_path}")
@@ -353,11 +360,13 @@ class ModelEvaluator:
                 if "decision_threshold" not in config["inference"]:
                     logger.error("No 'decision_threshold' key in config['inference']")
                     raise KeyError("decision_threshold")
+
                 config["inference"]["decision_threshold"] = float(
                     metrics["optimal_recall_threshold"]
                 )
                 with open(self.config_path, "w") as f:
-                    yaml.safe_dump(config, f)
+                    yaml_parser.dump(config, f)
+
                 logger.info(
                     f"Updated config {self.config_path} with optimal recall threshold: {metrics['optimal_recall_threshold']:.2f}"
                 )
