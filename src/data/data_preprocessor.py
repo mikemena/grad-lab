@@ -91,10 +91,10 @@ class DataPreprocessor:
         is_numeric = pd.api.types.is_numeric_dtype(series)
         unique_proportion = unique_count / total_rows
 
-        if is_numeric:
-            return "regression"
-        elif unique_count == 2:
+        if unique_count == 2:
             return "binary"
+        elif is_numeric:
+            return "regression"
         elif unique_count <= 5 and not is_numeric:
             return "categorical"
         elif unique_count >= 6 and not is_numeric:
@@ -265,6 +265,7 @@ class DataPreprocessor:
             self.target_type = self.determine_target_type(
                 target_data, unique_count, total_rows
             )
+            logger.debug(f"target type unique count: {unique_count}")
             logger.info(f"Detected target type: {self.target_type}")
 
             # Encode categorical targets

@@ -1,6 +1,6 @@
 import os
 import argparse
-import yaml
+from ruamel.yaml import YAML
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -16,6 +16,8 @@ from evaluate import ModelEvaluator
 from sklearn.utils.class_weight import compute_class_weight
 
 logger = setup_logger(__name__, include_location=True)
+
+yaml = YAML()
 
 
 class ModelTrainer:
@@ -222,7 +224,7 @@ def create_data_loaders(
 
 def main(config_path):
     with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f)
 
     # Extract save_dir from config
     save_dir = config.get("preprocessing", {}).get(

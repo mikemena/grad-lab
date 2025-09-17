@@ -1,6 +1,6 @@
 import os
 import torch
-import yaml
+from ruamel.yaml import YAML
 import argparse
 import pandas as pd
 from train_model import instantiate_model
@@ -8,6 +8,8 @@ from data.data_preprocessor import DataPreprocessor
 from logger import setup_logger
 
 logger = setup_logger(__name__, include_location=True)
+
+yaml = YAML()
 
 
 def load_unseen_data(file_path, preprocessor, config):
@@ -47,7 +49,7 @@ def load_unseen_data(file_path, preprocessor, config):
 
 def main(config_path, input_path=None, output_path=None):
     with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f)
 
     # Extract save_dir from config
     save_dir = config["preprocessing"]["save_dir"]
@@ -85,8 +87,16 @@ def main(config_path, input_path=None, output_path=None):
     model.eval()
 
     # Inference
-    binary_threshold = config["inference"]["decision_threshold"]
+    if "decision_threshold" not in config["inference"]:
+        binary_threshold = 0.5  # Fallback if not set by evaluation
+        logger.warning(
+            f"No decision_threshold in config; using default: {binary_threshold}"
+        )
+    else:
+        binary_threshold = config["inference"]["decision_threshold"]
+
     logger.info(f"Binary Threshold: {binary_threshold}")
+
     with torch.no_grad():
         outputs = model(X_unseen.to(device))
         probabilities = torch.sigmoid(outputs).cpu().numpy()

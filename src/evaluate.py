@@ -28,6 +28,8 @@ from logger import setup_logger
 
 logger = setup_logger(__name__, include_location=True)
 
+yaml = YAML()
+
 
 class ModelEvaluator:
     def __init__(
@@ -40,6 +42,7 @@ class ModelEvaluator:
         self.metrics_history = []
         self.save_dir = save_dir
         self.config_path = config_path
+        self.yaml = yaml
         os.makedirs(self.save_dir, exist_ok=True)
         if config_path:
             logger.info(f"ModelEvaluator initialized with config_path: {config_path}")
@@ -117,7 +120,7 @@ class ModelEvaluator:
         )
 
         # Perform business impact analysis
-        business_analyzer = BusinessImpactAnalyzer()
+        business_analyzer = BusinessImpactAnalyzer(self.config_path)
         business_metrics = business_analyzer.calculate_business_value(
             targets, predictions
         )
@@ -343,13 +346,12 @@ class ModelEvaluator:
                     logger.error("Key 'optimal_recall_threshold' not found in metrics")
                     raise KeyError("optimal_recall_threshold")
 
-                yaml_parser = YAML()
-                yaml_parser.preserve_quotes = True
+                self.yaml.preserve_quotes = True
                 # Force flow style for sequences (lists/arrays)
-                yaml_parser.default_flow_style = None  # Preserve original style
+                self.yaml.default_flow_style = None  # Preserve original style
 
                 with open(self.config_path, "r") as f:
-                    config = yaml_parser.load(f)
+                    config = self.yaml.load(f)
 
                 if not config:
                     logger.error(f"Config file {self.config_path} is empty or invalid")
@@ -362,13 +364,13 @@ class ModelEvaluator:
                     raise KeyError("decision_threshold")
 
                 config["inference"]["decision_threshold"] = float(
-                    metrics["optimal_recall_threshold"]
+                    metrics["optimal_business_threshold"]
                 )
                 with open(self.config_path, "w") as f:
-                    yaml_parser.dump(config, f)
+                    self.yaml.dump(config, f)
 
                 logger.info(
-                    f"Updated config {self.config_path} with optimal recall threshold: {metrics['optimal_recall_threshold']:.2f}"
+                    f"Updated config {self.config_path} with optimal business threshold: {metrics['optimal_business_threshold']:.2f}"
                 )
             except Exception as e:
                 logger.error(
@@ -504,20 +506,34 @@ class ModelEvaluator:
 
 
 class BusinessImpactAnalyzer:
-    def __init__(self, cost_fp=1, cost_fn=10, benefit_tp=20):
-        self.cost_fp = cost_fp  # Cost of false positive
-        self.cost_fn = cost_fn  # Cost of false negative
-        self.benefit_tp = benefit_tp  # Benefit of true positive
+    def __init__(self, config_path=None):
+        self.config_path = config_path
+        self.yaml = yaml
 
     def calculate_business_value(self, y_true, y_pred):
         """Calculate business value based on confusion matrix"""
+        if self.config_path is None:
+            raise ValueError(
+                "config_path must be provided to load business costs/benefits."
+            )
+        with open(self.config_path, "r") as f:
+            config = self.yaml.load(f)
+
+        cost_fp = config["inference"]["cost_false_positives"]
+        cost_fn = config["inference"]["cost_false_negatives"]
+        benefit_tp = config["inference"]["benefit_true_positives"]
+        logger.info(f"Cost of false positives: {cost_fp}")
+        logger.info(f"Cost of false negatives: {cost_fn}")
+        logger.info(f"Benefit of true positive: {benefit_tp}")
+
         try:
             tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
             total_value = (
-                tp * self.benefit_tp  # Revenue from true positives
-                - fp * self.cost_fp  # Cost of false positives
-                - fn * self.cost_fn  # Cost of false negatives
+                tp * benefit_tp  # Revenue from true positives
+                - fp * cost_fp  # Cost of false positives
+                - fn * cost_fn  # Cost of false negatives
             )
+            logger.info(f"Total Value: {total_value}")
             return {
                 "total_business_value": float(total_value),
                 "value_per_prediction": (

@@ -33,7 +33,9 @@ preprocessing:
   save_dir: "experiments/preprocessing/artifacts"
 
 inference:
-  decision_threshold: 0.4
+  cost_false_positives: 10
+  cost_false_negatives: 25
+  benefit_true_positives: 20
 
 data:
   filepath:
