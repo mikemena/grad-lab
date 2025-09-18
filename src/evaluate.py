@@ -326,13 +326,16 @@ class ModelEvaluator:
 
     def save_evaluation_results(self, metrics, targets, probabilities):
         """Save evaluation results to JSON and update config with optimal threshold"""
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        filename = f"eval_results_{timestamp}.json"
         results = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "metrics": self._convert_to_serializable(metrics),
             "predictions": self._convert_to_serializable(probabilities),
             "targets": self._convert_to_serializable(targets),
         }
-        with open(os.path.join(self.save_dir, "evaluation_results.json"), "w") as f:
+        filepath = os.path.join(self.save_dir, filename)
+        with open(filepath, "w") as f:
             json.dump(results, f, indent=2)
         logger.info(
             f"Evaluation results saved to {self.save_dir}/evaluation_results.json"
