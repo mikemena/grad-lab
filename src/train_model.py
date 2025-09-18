@@ -262,6 +262,9 @@ def main(config_path):
         class_weights = np.clip(class_weights, 0.1, 10)
         logger.info(f"Conservative class weights: {class_weights}")
     else:
+        logger.debug(
+            f"Class weights applied from config: {config["training"]["use_class_weights"]}"
+        )
         class_weights = None
 
     # Create loaders
