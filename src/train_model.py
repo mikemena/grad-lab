@@ -185,10 +185,11 @@ def instantiate_model(model_config, input_dim):
         raise ValueError(f"Unknown model_type: {model_type}")
 
 
-def load_dataset(file_path, state_file, save_dir, config):
+def load_dataset(file_path, preprocessor, config):
     """Load dataset with preprocessing."""
-    preprocessor = DataPreprocessor(save_dir=save_dir)
-    preprocessor.load_state(state_file)
+    # preprocessor = DataPreprocessor(save_dir=save_dir)
+    # logger.debug(f"Loading state for: {file_path}")
+    # preprocessor.load_state(state_file)
     df = pd.read_excel(file_path)
     target_column = config["data"]["target_column"]
     X = df.drop([target_column], axis=1, errors="ignore").values
@@ -239,11 +240,13 @@ def main(config_path):
     val_file = config["data"]["filepath"]["val"]
     test_file = config["data"]["filepath"]["test"]
 
-    X_train, y_train, y_train_raw = load_dataset(
-        train_file, state_file, save_dir, config
-    )
-    X_val, y_val, _ = load_dataset(val_file, state_file, save_dir, config)
-    X_test, y_test, _ = load_dataset(test_file, state_file, save_dir, config)
+    # Instantiate and load state once
+    preprocessor = DataPreprocessor(save_dir=save_dir)
+    preprocessor.load_state(state_file)
+
+    X_train, y_train, y_train_raw = load_dataset(train_file, preprocessor, config)
+    X_val, y_val, _ = load_dataset(val_file, preprocessor, config)
+    X_test, y_test, _ = load_dataset(test_file, preprocessor, config)
 
     input_dim = X_train.shape[1]
     with open(state_file, "r") as f:

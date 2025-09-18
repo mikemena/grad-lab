@@ -35,7 +35,7 @@ inference:
   cost_false_positives: 10
   cost_false_negatives: 25
   benefit_true_positives: 20
-  decision_threshold: 0.3599999999999999
+  decision_threshold: 0.33999999999999986
 
 data:
   filepath:
