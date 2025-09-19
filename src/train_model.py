@@ -302,9 +302,13 @@ def main(config_path):
         test_loader, feature_names=feature_names
     )
 
+    timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
+    filename = f"final_results_{timestamp}.json"
+
     # Save results
     results = {
         "date": datetime.now().strftime("%m-%d-%Y %H:%M"),
+        "full_config": config,
         "model_config": config["model"],
         "training_results": training_results,
         "test_metrics": {
@@ -314,9 +318,8 @@ def main(config_path):
             "recall": metrics["recall"],
         },
     }
-    # final_json_file = r"{save_dir}/final_results.json"
-    # logger.debug(f"")
-    with open(f"{save_dir}/final_results.json", "w") as f:
+    filepath = os.path.join(save_dir, filename)
+    with open(filepath, "w") as f:
         json.dump(results, f, indent=2)
     logger.info("\n🎉 FINAL TRAINING COMPLETED!")
 

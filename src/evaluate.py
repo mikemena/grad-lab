@@ -326,7 +326,7 @@ class ModelEvaluator:
 
     def save_evaluation_results(self, metrics, targets, probabilities):
         """Save evaluation results to JSON and update config with optimal threshold"""
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
         filename = f"eval_results_{timestamp}.json"
         results = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
