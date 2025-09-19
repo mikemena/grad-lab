@@ -16,4 +16,4 @@
 `python src/predict.py --config configs/model_v1.yaml --input experiments/preprocessing/debug_splits/raw_test_split.xlsx`
 
 # Compare runs
-`python compare_runs.py --dir evaluation_results`
+`python src/compare_runs.py --dir evaluation_results`

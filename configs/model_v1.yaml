@@ -2,13 +2,13 @@ model: # Model architecture
   type: basic # 'basic' for Predictor, 'improved' for ImprovedPredictor
   input_dim: 28
   hidden_dims: [256, 128, 64]
-  dropout_rate: 0.4
+  dropout_rate: 0.3
   activation: relu # relu, gelu, leaky_relu, swish
   use_batch_norm: true
-  use_residual: true
+  use_residual: false
 
 training: # Training parameters
-  epochs: 100
+  epochs: 50
   lr: 0.001
   loss_type: bce # 'bce', 'weighted_bce', 'focal'
   alpha: 0.25 # For focal/weighted
@@ -35,7 +35,7 @@ inference:
   cost_false_positives: 10
   cost_false_negatives: 25
   benefit_true_positives: 20
-  decision_threshold: 0.33999999999999986
+  decision_threshold: 0.38999999999999985
 
 data:
   filepath:
