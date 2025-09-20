@@ -327,7 +327,7 @@ class ModelEvaluator:
     def save_evaluation_results(self, metrics, targets, probabilities):
         """Save evaluation results to JSON and update config with optimal threshold"""
         timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
-        filename = f"eval_results_{timestamp}.json"
+        filename = f"eval_{timestamp}.json"
         if self.config_path is None:
             raise ValueError(
                 "config_path must be provided to load business costs/benefits."
@@ -341,7 +341,6 @@ class ModelEvaluator:
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "metrics": self._convert_to_serializable(metrics),
             "params": config_params,
-            "config": config,
             "predictions": self._convert_to_serializable(probabilities),
             "targets": self._convert_to_serializable(targets),
         }

@@ -18,7 +18,7 @@ training: # Training parameters
   weight_decay: 0.0
   patience: 5 # Reduced patience for faster early stopping
   min_delta: 0.0001
-  use_class_weights: true
+  use_class_weights: false
   use_scheduler: false
   scheduler_type: cosine # If true
   batch_size: 32
@@ -39,8 +39,8 @@ inference:
 
 data:
   filepath:
-    state: "experiments/preprocessing/artifacts/preprocessor_state.json"
-    train: "experiments/preprocessing/artifacts/bank_loans_train_processed.xlsx"
-    val: "experiments/preprocessing/artifacts/bank_loans_val_processed.xlsx"
-    test: "experiments/preprocessing/debug_splits/raw_test.xlsx"
-  target_column: "personal_loan"
+    state: experiments/preprocessing/artifacts/preprocessor_state.json
+    train: experiments/preprocessing/artifacts/titanic_train_processed.xlsx
+    val: experiments/preprocessing/artifacts/titanic_val_processed.xlsx
+    test: experiments/preprocessing/artifacts/titanic_test_processed.xlsx
+  target_column: Survived
