@@ -2,14 +2,14 @@ model: # Model architecture
   type: basic # 'basic' for Predictor, 'improved' for ImprovedPredictor
   input_dim: 28
   hidden_dims: [256, 128, 64]
-  dropout_rate: 0.3
+  dropout_rate: 0.2
   activation: relu # relu, gelu, leaky_relu, swish
   use_batch_norm: true
   use_residual: false
 
 training: # Training parameters
   epochs: 50
-  lr: 0.001
+  lr: 0.0001
   loss_type: bce # 'bce', 'weighted_bce', 'focal'
   alpha: 0.25 # For focal/weighted
   gamma: 2.0

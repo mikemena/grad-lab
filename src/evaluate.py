@@ -328,10 +328,20 @@ class ModelEvaluator:
         """Save evaluation results to JSON and update config with optimal threshold"""
         timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
         filename = f"eval_results_{timestamp}.json"
+        if self.config_path is None:
+            raise ValueError(
+                "config_path must be provided to load business costs/benefits."
+            )
+        with open(self.config_path, "r") as f:
+            config = self.yaml.load(f)
+
+        config_params = self._extract_key_parameters(config)
+
         results = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "metrics": self._convert_to_serializable(metrics),
-            "params": self.config,
+            "params": config_params,
+            "config": config,
             "predictions": self._convert_to_serializable(probabilities),
             "targets": self._convert_to_serializable(targets),
         }
@@ -342,12 +352,80 @@ class ModelEvaluator:
             f"Evaluation results saved to {self.save_dir}/evaluation_results.json"
         )
 
+    def _extract_key_parameters(self, config):
+        """Extract key parameters from YAML config for UI display"""
+        key_params = {}
+
+        if not isinstance(config, dict):
+            return key_params
+
+        # Model architecture params
+        if "model" in config:
+            model_config = config["model"]
+            key_params.update(
+                {
+                    "model_type": model_config.get("type", "N/A"),
+                    "input_dim": model_config.get("input_dim", "N/A"),
+                    "hidden_dims": model_config.get("hidden_dims", "N/A"),
+                    "dropout_rate": model_config.get("dropout_rate", "N/A"),
+                    "activation": model_config.get("activation", "N/A"),
+                    "use_batch_norm": model_config.get("use_batch_norm", "N/A"),
+                    "use_residual": model_config.get("use_residual", "N/A"),
+                }
+            )
+        if "training" in config:
+            training_config = config["training"]
+            key_params.update(
+                {
+                    "epochs": training_config.get("epochs", "N/A"),
+                    "lr": training_config.get("lr", "N/A"),
+                    "batch_size": training_config.get("batch_size", "N/A"),
+                    "loss_type": training_config.get("loss_type", "N/A"),
+                    "alpha": training_config.get("alpha", "N/A"),
+                    "gamma": training_config.get("gamma", "N/A"),
+                    "optimizer": training_config.get("optimizer", "N/A"),
+                    "weight_decay": training_config.get("weight_decay", "N/A"),
+                    "patience": training_config.get("patience", "N/A"),
+                    "use_class_weights": training_config.get(
+                        "use_class_weights", "N/A"
+                    ),
+                }
+            )
+
+        # Tuning params (if enabled)
+        if config.get("tuning", {}).get("enabled", False):
+            tuning_config = config["tuning"]
+            key_params.update(
+                {
+                    "tuning_enabled": True,
+                    "lr_range": tuning_config.get("lr_range", "N/A"),
+                    "hidden_dims_options": tuning_config.get(
+                        "hidden_dims_options", "N/A"
+                    ),
+                }
+            )
+
+        # Business cost/benefits
+        if "inference" in config:
+            inference_config = config["inference"]
+            key_params.update(
+                {
+                    "cost_fp": inference_config.get("cost_false_positives", "N/A"),
+                    "cost_fn": inference_config.get("cost_false_negatives", "N/A"),
+                    "benefit_tp": inference_config.get("benefit_true_positives", "N/A"),
+                    "decision_threshold": inference_config.get(
+                        "decision_threshold", "N/A"
+                    ),
+                }
+            )
+        return key_params
+
         if self.config_path:
             try:
-                logger.debug(f"Metrics dictionary keys: {list(metrics.keys())}")
+                logger.debug(f"Metrics dictionary keys: {list(config.keys())}")
                 logger.debug(f"Attempting to update config file: {self.config_path}")
-                if "optimal_recall_threshold" not in metrics:
-                    logger.error("Key 'optimal_recall_threshold' not found in metrics")
+                if "decision_threshold" not in config:
+                    logger.error("Key 'decision_threshold' not found in config")
                     raise KeyError("optimal_recall_threshold")
 
                 self.yaml.preserve_quotes = True
@@ -368,13 +446,13 @@ class ModelEvaluator:
                     raise KeyError("decision_threshold")
 
                 config["inference"]["decision_threshold"] = float(
-                    metrics["optimal_business_threshold"]
+                    config["inference"]["decision_threshold"]
                 )
                 with open(self.config_path, "w") as f:
                     self.yaml.dump(config, f)
 
                 logger.info(
-                    f"Updated config {self.config_path} with optimal business threshold: {metrics['optimal_business_threshold']:.2f}"
+                    f"Updated config {self.config_path} with optimal business threshold: {config["inference"]["decision_threshold"]:.2f}"
                 )
             except Exception as e:
                 logger.error(

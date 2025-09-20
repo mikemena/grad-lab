@@ -242,7 +242,7 @@ def main():
         if run_idx and run_idx not in selected_indices:
             selected_indices.append(run_idx)
         elif run_idx in selected_indices:
-            st.sidebar.warning(f"Run already selected!")
+            st.sidebar.warning("Run already selected!")
 
     # Limit to max 5 total
     selected_indices = selected_indices[:5]
