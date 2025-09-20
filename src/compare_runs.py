@@ -1,30 +1,33 @@
 import json
 import os
-import pandas as pd
 import argparse
+from tabulate import tabulate
+from logger import setup_logger
+
+logger = setup_logger(__name__, include_location=True)
 
 
 def load_run_results(directory, pattern="*.json"):
     """Load all JSON files in a dir matching pattern, extract key fields."""
     # Convert relative path to absolute path from current working directory
     abs_dir = os.path.abspath(directory)
-    print(f"DEBUG: Looking for directory: {abs_dir}")
-    print(f"DEBUG: Directory exists: {os.path.exists(abs_dir)}")
+    logger.info(f"DEBUG: Looking for directory: {abs_dir}")
+    logger.info(f"DEBUG: Directory exists: {os.path.exists(abs_dir)}")
 
     if not os.path.exists(abs_dir):
-        print(f"ERROR: Directory not found: {abs_dir}")
-        print(f"DEBUG: Current working directory: {os.getcwd()}")
+        logger.info(f"ERROR: Directory not found: {abs_dir}")
+        logger.info(f"DEBUG: Current working directory: {os.getcwd()}")
         return []
 
     # List all files to debug
     all_files = os.listdir(abs_dir)
-    print(f"DEBUG: Files in directory: {all_files}")
+    logger.info(f"DEBUG: Files in directory: {all_files}")
 
     json_files = [f for f in all_files if f.endswith(".json")]
-    print(f"DEBUG: JSON files found: {json_files}")
+    logger.info(f"DEBUG: JSON files found: {json_files}")
 
     if not json_files:
-        print(f"No JSON files found in {abs_dir}")
+        logger.error(f"No JSON files found in {abs_dir}")
         return []
 
     results = []
@@ -33,7 +36,7 @@ def load_run_results(directory, pattern="*.json"):
         try:
             with open(filepath, "r") as f:
                 data = json.load(f)
-            # Extract your three things
+            # Extract the components
             run_date = data.get("date", "Unknown")
             params = data.get("full_config", data.get("model_config", {}))  # Try both
             metrics = data.get(
@@ -58,9 +61,9 @@ def load_run_results(directory, pattern="*.json"):
                     "metrics": metrics,
                 }
             )
-            print(f"DEBUG: Successfully loaded {filename}")
+            logger.info(f"DEBUG: Successfully loaded {filename}")
         except Exception as e:
-            print(f"ERROR loading {filename}: {e}")
+            logger.error(f"ERROR loading {filename}: {e}")
             continue
 
     return results
@@ -69,40 +72,58 @@ def load_run_results(directory, pattern="*.json"):
 def compare_runs(results_list, metric_keys=None, param_keys=None):
     """Create comparison tables."""
     if not results_list:
-        print("No results to compare!")
+        logger.warning("No results to compare!")
         return
 
     if not metric_keys:
-        metric_keys = ["accuracy", "f1", "roc_auc", "recall"]  # Defaults
+        metric_keys = [
+            "accuracy",
+            "f1",
+            "roc_auc",
+            "recall",
+            "matthews_corrcoef",
+            "true_positives",
+            "true_negatives",
+            "false_positives",
+            "false_negatives",
+        ]  # Defaults
     if not param_keys:
         param_keys = (
             list(results_list[0]["params"].keys()) if results_list else []
         )  # Auto-detect
 
-    # Metrics table
+    # Metrics table with tabulate
     metrics_data = []
     for r in results_list:
-        row = {"run": r["run_file"][:25]}  # Truncate filename
+        row = [r["run_file"][:35]]  # First column
         for k in metric_keys:
-            row[k] = r["metrics"].get(k, "N/A")
+            val = r["metrics"].get(k, "N/A")
+            if isinstance(val, (int, float)):
+                row.append(f"{val:.4f}")
+            else:
+                row.append(str(val))
         metrics_data.append(row)
 
-    metrics_df = pd.DataFrame(metrics_data)
-    print("\n=== METRICS COMPARISON ===")
-    print(metrics_df.round(4).to_string(index=False))
+    headers = ["run"] + metric_keys
+
+    logger.info("\n=== METRICS COMPARISON ===")
+    logger.info(
+        tabulate(metrics_data, headers=headers, tablefmt="grid", floatfmt=".4f")
+    )
 
     # Params table
     if param_keys:
         params_data = []
         for r in results_list:
-            row = {"run": r["run_file"][:25]}
+            row = {"run": r["run_file"][:25]}  # First column
             for k in param_keys:
                 row[k] = r["params"].get(k, "N/A")
             params_data.append(row)
 
-        params_df = pd.DataFrame(params_data)
-        print("\n=== PARAMS COMPARISON ===")
-        print(params_df.to_string(index=False))
+        logger.info("\n=== PARAMS COMPARISON ===")
+        logger.info(
+            tabulate(params_data, headers=["run"] + param_keys, tablefmt="grid")
+        )
 
 
 if __name__ == "__main__":
@@ -112,10 +133,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    print(f"Starting comparison with directory: {args.dir}")
+    logger.info(f"Starting comparison with directory: {args.dir}")
     results = load_run_results(args.dir)
     if results:
-        print(f"\n✅ Loaded {len(results)} runs from {args.dir}")
+        logger.info(f"\n✅ Loaded {len(results)} runs from {args.dir}")
         compare_runs(results)
     else:
-        print("\n❌ No results found!")
+        logger.error("\n❌ No results found!")
