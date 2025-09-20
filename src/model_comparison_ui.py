@@ -344,7 +344,7 @@ def main():
     st.markdown(
         """
         **Built with ❤️ for ML experimentation**
-        *Load your model runs from `evaluation_results/` directory*
+        *Load model runs from `evaluation_results/` directory*
         """
     )
 

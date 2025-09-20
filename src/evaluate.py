@@ -331,6 +331,7 @@ class ModelEvaluator:
         results = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "metrics": self._convert_to_serializable(metrics),
+            "params": self.config,
             "predictions": self._convert_to_serializable(probabilities),
             "targets": self._convert_to_serializable(targets),
         }

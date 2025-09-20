@@ -17,3 +17,6 @@
 
 # Compare runs
 `python src/compare_runs.py --dir evaluation_results`
+
+# Run streamlit model run comparison
+`streamlit run src/model_comparison_ui.py`
