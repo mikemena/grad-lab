@@ -283,9 +283,7 @@ class DataPipeline:
 
         return X_train, X_val, X_test, y_train, y_val, y_test
 
-    def _split_raw_dataframe(
-        self, df: pd.DataFrame, test_size, val_size, random_state, target_column
-    ):
+    def _split_raw_dataframe(self, df: pd.DataFrame, test_size, val_size, random_state, target_column):
         df = df.sample(frac=1, random_state=random_state).reset_index(drop=True)
         df = df.reset_index(drop=True)
         stratify = (
@@ -360,23 +358,3 @@ class DataPipeline:
                 config["text"].append(col)
         logger.info("Config:", config)
         return config
-
-
-def prepare_split_training_data(config, **kwargs):
-    pipeline = DataPipeline(config=config)
-    return pipeline.prepare_training_data_with_splits(
-        file_path=config["file_path"],
-        target_column=config["target_column"],
-        drop_columns=config["drop_columns"],
-        test_size=config["splits"]["test_size"],
-        val_size=config["splits"]["val_size"],
-        random_state=config["random_state"],
-        apply_smote=config["imbalance"]["apply_smote"],
-        imbalance_threshold=config["imbalance"]["threshold"],
-        **kwargs,
-    )
-
-
-def load_split_training_data(config):
-    pipeline = DataPipeline(config=config)
-    return pipeline.load_split_data_for_training()

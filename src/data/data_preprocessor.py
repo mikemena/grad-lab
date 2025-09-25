@@ -28,6 +28,23 @@ class DataPreprocessor:
         self.one_hot_encoder = None  # For categorical and binary columns
         os.makedirs(save_dir, exist_ok=True)
 
+    def determine_target_type(self, series, unique_count, total_rows):
+        """Determine the target column type"""
+        is_numeric = pd.api.types.is_numeric_dtype(series)
+        unique_proportion = unique_count / total_rows
+
+        if unique_count == 2:
+            return "binary"
+        elif is_numeric:
+            return "regression"
+        elif unique_count <= 5 and not is_numeric:
+            return "categorical"
+        elif unique_count >= 6 and not is_numeric:
+            if unique_proportion > 0.9:
+                return "text"  # Unlikely for target, but included for completeness
+            return "categorical"
+        return "text"
+
     def preprocess_datetime(self, df, date_columns):
         """Extract features from datetime columns"""
         df = df.copy()
@@ -85,23 +102,6 @@ class DataPreprocessor:
         df = pd.concat([df, encoded_df], axis=1)
 
         return df
-
-    def determine_target_type(self, series, unique_count, total_rows):
-        """Determine the target column type"""
-        is_numeric = pd.api.types.is_numeric_dtype(series)
-        unique_proportion = unique_count / total_rows
-
-        if unique_count == 2:
-            return "binary"
-        elif is_numeric:
-            return "regression"
-        elif unique_count <= 5 and not is_numeric:
-            return "categorical"
-        elif unique_count >= 6 and not is_numeric:
-            if unique_proportion > 0.9:
-                return "text"  # Unlikely for target, but included for completeness
-            return "categorical"
-        return "text"
 
     def target_encode(self, df, feature_column, target_data=None, alpha=0.1, fit=True):
         """Transform a high-cardinality categorical feature into a numerical feature"""
@@ -374,6 +374,7 @@ class DataPreprocessor:
         # features_to_process = features_df[columns_to_process]
         features_to_process = self.align_features(features_df, fit=fit)
 
+        # Step 6: Scale features
         logger.info("📊 Scaling features...")
         features_to_process = self.scale_features(features_to_process, fit=fit)
 
