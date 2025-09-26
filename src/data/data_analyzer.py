@@ -260,12 +260,25 @@ def get_data_quality_recommendations(stats, recommended_type):
 
 def detect_outliers(series):
     """Detect outliers using IQR method"""
-    if not pd.api.types.is_numeric_dtype(series):
+    # Check if series is numeric and has enough data
+    if not pd.api.types.is_numeric_dtype(series) or len(series) < 2:
         return 0
 
+    # Drop NaN values and check if there's enough data left
+    series = series.dropna()
+    if len(series) < 2:
+        return 0
+
+    # Calculate quartiles and IQR
     Q1 = series.quantile(0.25)
     Q3 = series.quantile(0.75)
     IQR = Q3 - Q1
+
+    # Handle case where IQR is 0
+    if IQR == 0:
+        return 0
+
+    # Calculate bounds and identify outliers
     lower_bound = Q1 - 1.5 * IQR
     upper_bound = Q3 + 1.5 * IQR
     outliers = series[(series < lower_bound) | (series > upper_bound)]

@@ -170,6 +170,7 @@ class DataPipeline:
         logger.info("\n5. PROCESSING AND SAVING SPLITS...")
         base_filename = os.path.splitext(os.path.basename(file_path))[0]
 
+        # Process training data
         logger.info("🔄 Processing training split...")
         train_excel = f"{base_filename}_train_processed.xlsx"
         X_train_processed = self.preprocessor.process_training_data(
@@ -193,6 +194,9 @@ class DataPipeline:
             test_df, target_column, test_excel, fit=False
         )
         y_test = test_df[target_column].values
+
+
+        # Apply SMOTE if imbalance detected
         logger.debug(f"apply_smote: {apply_smote}")
         if apply_smote:
             is_imbalanced, distribution = self._detect_class_imbalance(
