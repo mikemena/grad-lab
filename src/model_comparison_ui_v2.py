@@ -43,6 +43,9 @@ def load_all_runs(directory="evaluation_results"):
                 "business_value": run_info["metrics"].get("total_business_value", 0),
             }
 
+            # Extract validation loss if available
+            run_info["val_loss"] = data.get("val_loss", []) if "val_loss" in data else []
+
             # Extract key params (flattened)
             run_info["key_params"] = extract_key_params(run_info["params"])
 
@@ -98,7 +101,7 @@ def create_comparison_df(selected_runs):
         return pd.DataFrame()
 
     data = []
-    for run_info in selected_runs:  # ✅ Changed from 'run' to 'run_info'
+    for run_info in selected_runs:
         row = {
             "Run": (
                 run_info["filename"][:20] + "..."
@@ -126,12 +129,12 @@ def create_param_comparison_df(selected_runs, param_keys=None):
     if not param_keys:
         # Auto-detect common parameters across selected runs
         all_params = set()
-        for run_info in selected_runs:  # ✅ Changed from 'run' to 'run_info'
+        for run_info in selected_runs:
             all_params.update(run_info["key_params"].keys())
         param_keys = sorted(list(all_params))[:8]  # Show top 8 params
 
     data = []
-    for run_info in selected_runs:  # ✅ Changed from 'run' to 'run_info'
+    for run_info in selected_runs:
         row = {
             "Run": (
                 run_info["filename"][:20] + "..."
@@ -160,7 +163,7 @@ def plot_metrics_comparison(selected_runs):
     metrics = ["accuracy", "precision", "recall", "f1", "roc_auc"]
     x = [
         run_info["filename"][:20] + "..." for run_info in selected_runs
-    ]  # ✅ Fixed variable
+    ]
     fig_data = []
 
     colors = px.colors.qualitative.Set1
@@ -168,7 +171,7 @@ def plot_metrics_comparison(selected_runs):
     for i, metric in enumerate(metrics):
         y_values = [
             run_info["key_metrics"][metric] for run_info in selected_runs
-        ]  # ✅ Fixed variable
+        ]
         fig_data.append(
             go.Bar(
                 name=metric.replace("_", "-").title(),
@@ -193,6 +196,37 @@ def plot_metrics_comparison(selected_runs):
     )
 
     return fig
+
+
+def plot_val_loss_comparison(selected_runs):
+    """Create validation loss charts side by side."""
+    if not selected_runs or not any(run_info["val_loss"] for run_info in selected_runs):
+        return None
+
+    figs = []
+    colors = px.colors.qualitative.Set1
+
+    for idx, run_info in enumerate(selected_runs):
+        if run_info["val_loss"]:
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    y=run_info["val_loss"],
+                    mode="lines",
+                    name=run_info["filename"][:20] + "...",
+                    line=dict(color=colors[idx % len(colors)])
+                )
+            )
+            fig.update_layout(
+                title=f"Validation Loss - {run_info['filename'][:20]}...",
+                xaxis_title="Epoch",
+                yaxis_title="Loss",
+                height=400,
+                showlegend=True
+            )
+            figs.append(fig)
+
+    return figs
 
 
 def main():
@@ -271,11 +305,14 @@ def main():
             metrics_df = create_comparison_df(selected_runs)
             st.dataframe(metrics_df, use_container_width=True, hide_index=True)
 
-        # with col2:
-        #     # Metrics chart
-        #     fig = plot_metrics_comparison(selected_runs)
-        #     if fig:
-        #         st.plotly_chart(fig, use_container_width=True)
+        # Validation loss charts
+        st.subheader("📉 Validation Loss Comparison")
+        val_loss_figs = plot_val_loss_comparison(selected_runs)
+        if val_loss_figs:
+            cols = st.columns(min(len(val_loss_figs), 3))  # Limit to 3 columns
+            for idx, fig in enumerate(val_loss_figs):
+                with cols[idx % len(cols)]:
+                    st.plotly_chart(fig, use_container_width=True)
 
         # Parameter comparison
         st.subheader("⚙️ Parameter Comparison")
@@ -288,60 +325,6 @@ def main():
 
         params_df = create_param_comparison_df(selected_runs, param_keys)
         st.dataframe(params_df, use_container_width=True, hide_index=True)
-
-        # Parameter differences
-        if len(selected_runs) > 1:
-            st.subheader("🔄 Parameter Changes vs Base")
-            base_run_info = selected_runs[0]  # ✅ Clear variable name
-            base_params = base_run_info["key_params"]
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**Changed Parameters:**")
-                changes = []
-                for run_info in selected_runs[1:]:  # ✅ Fixed: iterate over runs only
-                    run_name = run_info["filename"][:20] + "..."
-                    for param in run_info[
-                        "key_params"
-                    ].keys():  # ✅ Iterate over actual params
-                        base_val = base_params.get(param)
-                        curr_val = run_info["key_params"].get(param)
-                        if (
-                            base_val != curr_val
-                            and base_val is not None
-                            and curr_val is not None
-                        ):
-                            changes.append(
-                                {
-                                    "Run": run_name,
-                                    "Parameter": param,
-                                    "Base": base_val,
-                                    "New": curr_val,
-                                }
-                            )
-
-                if changes:
-                    changes_df = pd.DataFrame(changes)
-                    st.dataframe(changes_df, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No parameter changes detected!")
-
-            with col2:
-                st.markdown("**Business Impact:**")
-                business_values = [
-                    run_info["key_metrics"]["business_value"]
-                    for run_info in selected_runs
-                ]  # ✅ Fixed variable
-                fig_biz = px.bar(
-                    x=[
-                        run_info["filename"][:15] + "..." for run_info in selected_runs
-                    ],  # ✅ Fixed variable
-                    y=business_values,
-                    title="Total Business Value",
-                    color=business_values,
-                    color_continuous_scale="RdYlGn",
-                )
-                st.plotly_chart(fig_biz, use_container_width=True)
 
         # Detailed metrics view
         with st.expander("📋 Detailed Metrics (All Runs)"):
