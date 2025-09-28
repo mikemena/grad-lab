@@ -98,7 +98,7 @@ def create_comparison_df(selected_runs):
         return pd.DataFrame()
 
     data = []
-    for run_info in selected_runs:  # ✅ Changed from 'run' to 'run_info'
+    for run_info in selected_runs:
         row = {
             "Run": (
                 run_info["filename"][:20] + "..."
