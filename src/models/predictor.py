@@ -149,3 +149,26 @@ class FocalLoss(nn.Module):
             return focal_loss.sum()
         else:
             return focal_loss
+
+class LogisticRegresssion(nn.Module):
+    def __init__(self, input_dim, **kwargs):
+        super().__init__()
+        self.input_dim = input_dim
+        # Single linear layer for logistic regression
+        self.linear - nn.Linear(input_dim, 1)
+
+    def forward(self, x):
+        # Output raw logits (sigmoid applied in loss function or during inference)
+        return self.linear(x).squeeze()
+
+    def get_model_info(self):
+        """Return model architecture information"""
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return {
+            "input_dim": self.input_dim,
+            "hidden_dims": [],  # No hidden layers
+            "dropout_rate": 0.0,  # No dropout in logistic regression
+            "total_parameters": total_params,
+            "trainable_parameters": trainable_params,
+        }

@@ -4,7 +4,7 @@ from ruamel.yaml import YAML
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from models.predictor import Predictor, ImprovedPredictor, FocalLoss  # Relative import
+from models.predictor import Predictor, ImprovedPredictor, FocalLoss, LogisticRegresssion  # Relative import
 from logger import setup_logger
 from data.data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
@@ -133,38 +133,49 @@ class ModelTrainer:
         }
 
     def hypertune(self, train_loader, val_loader, input_dim, config):
-        """Run simple grid search if tuning enabled."""
         if not self.config["tuning"]["enabled"]:
             return
         best_val_loss = float("inf")
         best_params = {}
         for lr in self.config["tuning"]["lr_range"]:
-            for hidden_dims in self.config["tuning"]["hidden_dims_options"]:
-                for dropout in self.config["tuning"]["dropout_range"]:
-                    logger.info(
-                        f"Tuning: lr={lr}, hidden_dims={hidden_dims}, dropout={dropout}"
-                    )
-                    temp_config = self.config.copy()
-                    temp_config["model"]["hidden_dims"] = hidden_dims
-                    temp_config["model"]["dropout_rate"] = dropout
-                    temp_model = instantiate_model(temp_config["model"], input_dim)
-                    temp_trainer = ModelTrainer(temp_model, temp_config)
-                    results = temp_trainer.train(
-                        train_loader, val_loader, lr=lr, config=config
-                    )
-                    if results["best_val_loss"] < best_val_loss:
-                        best_val_loss = results["best_val_loss"]
-                        best_params = {
-                            "lr": lr,
-                            "hidden_dims": hidden_dims,
-                            "dropout": dropout,
-                        }
+            if self.config["model"]["type"] == "logistic":
+                logger.info(f"Tuning: lr={lr} (logistic regression)")
+                temp_config = self.config.copy()
+                temp_model = instantiate_model(temp_config["model"], input_dim)
+                temp_trainer = ModelTrainer(temp_model, temp_config)
+                results = temp_trainer.train(
+                    train_loader, val_loader, lr=lr, config=config
+                )
+                if results["best_val_loss"] < best_val_loss:
+                    best_val_loss = results["best_val_loss"]
+                    best_params = {"lr": lr}
+            else:
+                for hidden_dims in self.config["tuning"]["hidden_dims_options"]:
+                    for dropout in self.config["tuning"]["dropout_range"]:
+                        logger.info(
+                            f"Tuning: lr={lr}, hidden_dims={hidden_dims}, dropout={dropout}"
+                        )
+                        temp_config = self.config.copy()
+                        temp_config["model"]["hidden_dims"] = hidden_dims
+                        temp_config["model"]["dropout_rate"] = dropout
+                        temp_model = instantiate_model(temp_config["model"], input_dim)
+                        temp_trainer = ModelTrainer(temp_model, temp_config)
+                        results = temp_trainer.train(
+                            train_loader, val_loader, lr=lr, config=config
+                        )
+                        if results["best_val_loss"] < best_val_loss:
+                            best_val_loss = results["best_val_loss"]
+                            best_params = {
+                                "lr": lr,
+                                "hidden_dims": hidden_dims,
+                                "dropout": dropout,
+                            }
         logger.info(f"Best tuned params: {best_params}")
-        # Apply best params (optional)
         if best_params:
             self.config["training"]["lr"] = best_params["lr"]
-            self.config["model"]["hidden_dims"] = best_params["hidden_dims"]
-            self.config["model"]["dropout_rate"] = best_params["dropout"]
+            if self.config["model"]["type"] != "logistic":
+                self.config["model"]["hidden_dims"] = best_params["hidden_dims"]
+                self.config["model"]["dropout_rate"] = best_params["dropout"]
             self.model = instantiate_model(self.config["model"], input_dim)
 
 
@@ -181,6 +192,8 @@ def instantiate_model(model_config, input_dim):
         return Predictor(input_dim=input_dim, **model_params)
     elif model_type == "improved":
         return ImprovedPredictor(input_dim=input_dim, **model_params)
+    elif model_type =="logistic":
+        return LogisticRegresssion(input_dim=input_dim, **model_params)
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 

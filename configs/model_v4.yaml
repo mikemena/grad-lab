@@ -1,11 +1,11 @@
 model: # Model architecture
-  type: basic # basic,improved, logistic
+  type: logistic # basic,improved, logistic
   input_dim: 28
-  hidden_dims: [128, 64]
-  dropout_rate: 0.2
-  activation: relu # relu, gelu, leaky_relu, swish
-  use_batch_norm: true
-  use_residual: false
+  hidden_dims: [] # logistic regression doesn’t use
+  dropout_rate: 0 # logistic regression doesn’t use
+  activation: relu # relu, gelu, leaky_relu, swish, but logistic regression doesn’t use
+  use_batch_norm: false # logistic regression doesn’t use
+  use_residual: false # logistic regression doesn’t use
 
 training: # Training parameters
   epochs: 50
