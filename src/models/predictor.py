@@ -7,6 +7,11 @@ logger = setup_logger(__name__, include_location=True)
 
 
 class Predictor(nn.Module):
+    """
+    A configurable multi-layer perceptron (MLP) for binary classification with optional
+    BatchNorm/Dropout and flexible activations; outputs a single logit.
+    """
+
     def __init__(
         self,
         input_dim,
@@ -64,6 +69,10 @@ class Predictor(nn.Module):
 
 
 class ImprovedPredictor(Predictor):
+    """
+    An enhanced MLP that adds input normalization, optional residual (skip) connections,
+    and a regularized two-stage output head for stability and performance
+    """
     def __init__(
         self,
         input_dim,
@@ -79,8 +88,8 @@ class ImprovedPredictor(Predictor):
         )
         self.use_residual = use_residual
         self.input_norm = nn.BatchNorm1d(input_dim)
-        # Override layers for residuals (adapt from your v4 code)
-        self.layers = nn.ModuleList()  # Build with residuals as in v4
+        # Override layers for residuals
+        self.layers = nn.ModuleList()
         prev_dim = input_dim
         for i, hidden_dim in enumerate(hidden_dims):
             # Linear layer
@@ -131,7 +140,11 @@ class ImprovedPredictor(Predictor):
 
 
 class FocalLoss(nn.Module):
-    """From v4."""
+    """
+    FocalLoss is designed to be plugged into training instead of a standard loss like nn.BCEWithLogitsLoss
+    Pair any of the models with FocalLoss if the data is imbalanced and want to focus learning on
+    hard-to-classify examples
+    """
 
     def __init__(self, alpha=0.25, gamma=2.0, reduction="mean"):
         super().__init__()
@@ -150,11 +163,15 @@ class FocalLoss(nn.Module):
         else:
             return focal_loss
 
-class LogisticRegresssion(nn.Module):
+class LogisticRegression(nn.Module):
+    """
+    A classic logistic regression—single linear layer producing a logit; simplest,
+    most interpretable baseline.
+    """
     def __init__(self, input_dim, **kwargs):
         super().__init__()
         self.input_dim = input_dim
-        # Single linear layer for logistic regression
+        # A pure logistic regression classifier
         self.linear - nn.Linear(input_dim, 1)
 
     def forward(self, x):
