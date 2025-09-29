@@ -356,6 +356,7 @@ class ModelEvaluator:
         key_params = {}
 
         if not isinstance(config, dict):
+            logger.error("Config is not a dictionary")
             return key_params
 
         # Model architecture params
@@ -420,42 +421,34 @@ class ModelEvaluator:
 
         if self.config_path:
             try:
-                logger.debug(f"Metrics dictionary keys: {list(config.keys())}")
-                logger.debug(f"Attempting to update config file: {self.config_path}")
-                if "decision_threshold" not in config:
-                    logger.error("Key 'decision_threshold' not found in config")
-                    raise KeyError("optimal_recall_threshold")
-
-                self.yaml.preserve_quotes = True
-                # Force flow style for sequences (lists/arrays)
-                self.yaml.default_flow_style = None  # Preserve original style
-
-                with open(self.config_path, "r") as f:
-                    config = self.yaml.load(f)
-
-                if not config:
-                    logger.error(f"Config file {self.config_path} is empty or invalid")
-                    raise ValueError(f"Invalid config file: {self.config_path}")
-                if "inference" not in config:
-                    logger.error("No 'inference' section in config file")
+                if "inference" not in config or not isinstance(config["inference"], dict):
+                    logger.error("No valid 'inference' section found in config")
                     raise KeyError("inference")
                 if "decision_threshold" not in config["inference"]:
-                    logger.error("No 'decision_threshold' key in config['inference']")
+                    logger.error("Key 'decision_threshold' not found in config['inference']")
                     raise KeyError("decision_threshold")
 
+                # Set YAML formatting options
+                self.yaml.preserve_quotes = True
+                self.yaml.default_flow_style = None
+
+                # Update decision_threshold (e.g., with optimal_business_threshold if available)
+                # Note: metrics should be passed from evaluate if needed
+                # For now, preserve existing decision_threshold
                 config["inference"]["decision_threshold"] = float(
-                    config["inference"]["decision_threshold"]
-                )
+                        config["inference"]["decision_threshold"]
+                            )
+
+                # Write updated config
                 with open(self.config_path, "w") as f:
                     self.yaml.dump(config, f)
-
-                logger.info(
-                    f"Updated config {self.config_path} with optimal business threshold: {config["inference"]["decision_threshold"]:.2f}"
-                )
+                    logger.info(f"Updated config {self.config_path} with decision threshold: {config['inference']['decision_threshold']:.2f}"
+                            )
+            except FileNotFoundError:
+                logger.error(f"Config file not found: {self.config_path}")
+                raise
             except Exception as e:
-                logger.error(
-                    f"Failed to update config file {self.config_path}: {str(e)}"
-                )
+                logger.error(f"Failed to update config file {self.config_path}: {str(e)}")
                 raise
         else:
             logger.warning("No config_path provided; skipping config update")

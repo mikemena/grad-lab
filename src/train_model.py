@@ -4,7 +4,7 @@ from ruamel.yaml import YAML
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from models.predictor import Predictor, ImprovedPredictor, FocalLoss, LogisticRegresssion  # Relative import
+from models.predictor import Predictor, ImprovedPredictor, FocalLoss, LogisticRegression  # Relative import
 from logger import setup_logger
 from data.data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
@@ -14,6 +14,7 @@ from datetime import datetime
 import json
 from evaluate import ModelEvaluator
 from sklearn.utils.class_weight import compute_class_weight
+import time
 
 logger = setup_logger(__name__, include_location=True)
 
@@ -193,7 +194,7 @@ def instantiate_model(model_config, input_dim):
     elif model_type == "improved":
         return ImprovedPredictor(input_dim=input_dim, **model_params)
     elif model_type =="logistic":
-        return LogisticRegresssion(input_dim=input_dim, **model_params)
+        return LogisticRegression(input_dim=input_dim, **model_params)
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
@@ -237,6 +238,7 @@ def create_data_loaders(
 
 
 def main(config_path):
+    start_time = time.time()
     with open(config_path, "r") as f:
         config = yaml.load(f)
 
@@ -335,6 +337,10 @@ def main(config_path):
     with open(filepath, "w") as f:
         json.dump(results, f, indent=2)
     logger.info("\n🎉 FINAL TRAINING COMPLETED!")
+
+    end_time = time.time()
+    total_runtime = (end_time - start_time)/60
+    logger.info(f"Training Completed: Total runtime: {total_runtime}")
 
 
 if __name__ == "__main__":
