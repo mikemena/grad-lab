@@ -417,7 +417,6 @@ class ModelEvaluator:
                     ),
                 }
             )
-        return key_params
 
         if self.config_path:
             try:
@@ -460,6 +459,8 @@ class ModelEvaluator:
                 raise
         else:
             logger.warning("No config_path provided; skipping config update")
+
+        return key_params
 
     def plot_training_history(
         self,
