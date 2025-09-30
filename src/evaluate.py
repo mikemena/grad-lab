@@ -25,6 +25,8 @@ import os
 import json
 from datetime import datetime
 from logger import setup_logger
+import mlflow
+from util import flatten_dict, filter_numeric_metrics
 
 logger = setup_logger(__name__, include_location=True)
 
@@ -101,6 +103,10 @@ class ModelEvaluator:
 
         # Compute comprehensive metrics with default threshold (0.5)
         metrics = self.comprehensive_evaluation(targets, probabilities, predictions)
+        serial_metrics = self._convert_to_serializable(metrics)
+        flat_metrics = filter_numeric_metrics(serial_metrics)
+        logger.debug(f"Logging metrics to MLflow: {list(flat_metrics.keys())}")
+        mlflow.log_metrics(flat_metrics)
 
         # Optimize threshold for recall
         optimal_recall_threshold, optimal_recall_score, thresholds, scores = (
@@ -143,6 +149,8 @@ class ModelEvaluator:
                 logger.info(f"{metric_name}: {value:.4f}")
             else:
                 logger.info(f"{metric_name}: {value}")
+
+        mlflow.log_metrics(filter_numeric_metrics(serial_metrics))
 
         return metrics, predictions, probabilities, targets
 
@@ -324,6 +332,8 @@ class ModelEvaluator:
         except Exception as e:
             logger.error(f"Error in plotting evaluation metrics: {str(e)}")
 
+        mlflow.log_artifact("evaluation_results/confusion_matrix.png")
+
     def save_evaluation_results(self, metrics, targets, probabilities):
         """Save evaluation results to JSON and update config with optimal threshold"""
         timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
@@ -346,9 +356,10 @@ class ModelEvaluator:
             "predictions": self._convert_to_serializable(probabilities),
             "targets": self._convert_to_serializable(targets),
         }
+        flat_results = flatten_dict(results)
         filepath = os.path.join(self.save_dir, filename)
         with open(filepath, "w") as f:
-            json.dump(results, f, indent=2)
+            json.dump(flat_results, f, indent=2)
         logger.info(
             f"Evaluation results saved to {self.save_dir}/evaluation_results.json"
         )
@@ -421,6 +432,10 @@ class ModelEvaluator:
                 }
             )
 
+        # key_params = self._extract_key_parameters(config)
+        # flat_params = filter_numeric_metrics(key_params)
+        # mlflow.log_params(flat_params)  # MLflow's log_params accepts strings, so adjust filtering if needed
+
         if self.config_path:
             try:
                 if "inference" not in config or not isinstance(config["inference"], dict):
@@ -476,7 +491,9 @@ class ModelEvaluator:
         plt.grid(True)
 
         if save:
-            plt.savefig(os.path.join(self.save_dir, filename))
+            full_path = os.path.join(self.save_dir, filename)
+            plt.savefig(full_path)
+            mlflow.log_artifact(full_path)
         if display:
             plt.show()
         plt.close()
@@ -510,9 +527,9 @@ class ModelEvaluator:
         plt.tight_layout(pad=2.0)  # Increase padding to avoid overlap
 
         if save:
-            plt.savefig(
-                os.path.join(self.save_dir, filename), dpi=300, bbox_inches="tight"
-            )
+            full_path = os.path.join(self.save_dir, filename)
+            plt.savefig(full_path, dpi=300, bbox_inches="tight")
+            mlflow.log_artifact(full_path)
         if display:
             plt.show()
         plt.close()
@@ -544,7 +561,9 @@ class ModelEvaluator:
         plt.grid(True)
 
         if save:
-            plt.savefig(os.path.join(self.save_dir, filename))
+            full_path = os.path.join(self.save_dir, filename)
+            plt.savefig(full_path)
+            mlflow.log_artifact(full_path)
         if display:
             plt.show()
         plt.close()
@@ -611,7 +630,7 @@ class BusinessImpactAnalyzer:
                 - fn * cost_fn  # Cost of false negatives
             )
             logger.info(f"Total Value: {total_value}")
-            return {
+            business_metrics = {
                 "total_business_value": float(total_value),
                 "value_per_prediction": (
                     float(total_value) / len(y_true) if len(y_true) > 0 else 0
@@ -621,9 +640,16 @@ class BusinessImpactAnalyzer:
                 "false_negatives": int(fn),
                 "true_negatives": int(tn),
             }
+            flat_business_metrics = filter_numeric_metrics(business_metrics)
+            mlflow.log_metrics(flat_business_metrics)
+
+            return business_metrics
+
+
         except Exception as e:
             logger.error(f"Error in business value calculation: {str(e)}")
             raise
+
 
     def optimize_for_business_value(self, y_true, y_pred_proba):
         """Find threshold that maximizes business value"""

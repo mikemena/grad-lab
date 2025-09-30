@@ -1,0 +1,22 @@
+artifact_path: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/models/m-ebbe9125ef404d1aae64c1eb4091567f/artifacts
+flavors:
+  python_function:
+    config:
+      device: null
+    data: data
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.pytorch
+    pickle_module_name: mlflow.pytorch.pickle_module
+    python_version: 3.13.1
+  pytorch:
+    code: null
+    model_data: data
+    pytorch_version: 2.8.0
+mlflow_version: 3.4.0
+model_id: m-ebbe9125ef404d1aae64c1eb4091567f
+model_size_bytes: 197568
+model_uuid: m-ebbe9125ef404d1aae64c1eb4091567f
+prompts: null
+utc_time_created: '2025-09-30 22:08:08.272548'

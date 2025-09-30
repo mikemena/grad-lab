@@ -15,6 +15,7 @@ import json
 from evaluate import ModelEvaluator
 from sklearn.utils.class_weight import compute_class_weight
 import time
+import mlflow
 
 logger = setup_logger(__name__, include_location=True)
 
@@ -139,39 +140,42 @@ class ModelTrainer:
         best_val_loss = float("inf")
         best_params = {}
         for lr in self.config["tuning"]["lr_range"]:
-            if self.config["model"]["type"] == "logistic":
-                logger.info(f"Tuning: lr={lr} (logistic regression)")
-                temp_config = self.config.copy()
-                temp_model = instantiate_model(temp_config["model"], input_dim)
-                temp_trainer = ModelTrainer(temp_model, temp_config)
-                results = temp_trainer.train(
-                    train_loader, val_loader, lr=lr, config=config
-                )
-                if results["best_val_loss"] < best_val_loss:
-                    best_val_loss = results["best_val_loss"]
-                    best_params = {"lr": lr}
-            else:
-                for hidden_dims in self.config["tuning"]["hidden_dims_options"]:
-                    for dropout in self.config["tuning"]["dropout_range"]:
-                        logger.info(
+            with mlflow.start_run(nested=True, run_name=f"trial_lr_{lr}"):  # Nested child run
+                mlflow.log_param("lr", lr)
+                if self.config["model"]["type"] == "logistic":
+                    logger.info(f"Tuning: lr={lr} (logistic regression)")
+                    temp_config = self.config.copy()
+                    temp_model = instantiate_model(temp_config["model"], input_dim)
+                    temp_trainer = ModelTrainer(temp_model, temp_config)
+                    results = temp_trainer.train(
+                        train_loader, val_loader, lr=lr, config=config
+                    )
+                    mlflow.log_metric("val_loss", results["best_val_loss"])
+                    if results["best_val_loss"] < best_val_loss:
+                        best_val_loss = results["best_val_loss"]
+                        best_params = {"lr": lr}
+                else:
+                    for hidden_dims in self.config["tuning"]["hidden_dims_options"]:
+                        for dropout in self.config["tuning"]["dropout_range"]:
+                            logger.info(
                             f"Tuning: lr={lr}, hidden_dims={hidden_dims}, dropout={dropout}"
-                        )
-                        temp_config = self.config.copy()
-                        temp_config["model"]["hidden_dims"] = hidden_dims
-                        temp_config["model"]["dropout_rate"] = dropout
-                        temp_model = instantiate_model(temp_config["model"], input_dim)
-                        temp_trainer = ModelTrainer(temp_model, temp_config)
-                        results = temp_trainer.train(
-                            train_loader, val_loader, lr=lr, config=config
-                        )
-                        if results["best_val_loss"] < best_val_loss:
-                            best_val_loss = results["best_val_loss"]
-                            best_params = {
-                                "lr": lr,
-                                "hidden_dims": hidden_dims,
-                                "dropout": dropout,
-                            }
-        logger.info(f"Best tuned params: {best_params}")
+                            )
+                            temp_config = self.config.copy()
+                            temp_config["model"]["hidden_dims"] = hidden_dims
+                            temp_config["model"]["dropout_rate"] = dropout
+                            temp_model = instantiate_model(temp_config["model"], input_dim)
+                            temp_trainer = ModelTrainer(temp_model, temp_config)
+                            results = temp_trainer.train(
+                                train_loader, val_loader, lr=lr, config=config
+                            )
+                            if results["best_val_loss"] < best_val_loss:
+                                best_val_loss = results["best_val_loss"]
+                                best_params = {
+                                    "lr": lr,
+                                    "hidden_dims": hidden_dims,
+                                    "dropout": dropout,
+                                }
+                                logger.info(f"Best tuned params: {best_params}")
         if best_params:
             self.config["training"]["lr"] = best_params["lr"]
             if self.config["model"]["type"] != "logistic":
@@ -236,106 +240,141 @@ def create_data_loaders(
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, val_loader, test_loader
 
+def _flatten_dict(d, parent_key='', sep='_'):
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
 
 def main(config_path):
     start_time = time.time()
     with open(config_path, "r") as f:
         config = yaml.load(f)
 
-    # Extract save_dir from config
-    save_dir = config.get("preprocessing", {}).get(
+    mlflow.set_experiment("MyProject")
+
+    # Flatten config for params (filter to loggable types)
+    flat_config = {k: v for k, v in _flatten_dict(config).items() if isinstance(v, (str, int, float, bool))}
+
+    with mlflow.start_run(run_name=config["training"].get("run_name", "default")):
+        mlflow.log_params(flat_config)
+        mlflow.log_artifact(config_path)
+
+        # Extract save_dir from config
+        save_dir = config.get("preprocessing", {}).get(
         "save_dir", "experiments/preprocessing/artifacts"
-    )
-    logger.info(f"Using save_dir: {save_dir}")
-
-    # Load data
-    # preprocessor = DataPreprocessor()
-    state_file = config["data"]["filepath"]["state"]
-    train_file = config["data"]["filepath"]["train"]
-    val_file = config["data"]["filepath"]["val"]
-    test_file = config["data"]["filepath"]["test"]
-
-    # Instantiate and load state once
-    preprocessor = DataPreprocessor(save_dir=save_dir)
-    preprocessor.load_state(state_file)
-
-    X_train, y_train, y_train_raw = load_dataset(train_file, preprocessor, config)
-    X_val, y_val, _ = load_dataset(val_file, preprocessor, config)
-    X_test, y_test, _ = load_dataset(test_file, preprocessor, config)
-
-    input_dim = X_train.shape[1]
-    with open(state_file, "r") as f:
-        preprocessor_state = json.load(f)
-    feature_names = preprocessor_state["feature_columns"]
-
-    # Compute class weights if needed
-    if config["training"]["use_class_weights"]:
-        class_weights = compute_class_weight(
-            "balanced", classes=np.unique(y_train_raw), y=y_train_raw
         )
-        class_weights[1] *= 1.5  # Conservative boost
-        class_weights = np.clip(class_weights, 0.1, 10)
-        logger.info(f"Conservative class weights: {class_weights}")
-    else:
-        logger.debug(
-            f"Class weights applied from config: {config["training"]["use_class_weights"]}"
+        logger.info(f"Using save_dir: {save_dir}")
+
+        # Load data
+        # preprocessor = DataPreprocessor()
+        state_file = config["data"]["filepath"]["state"]
+        train_file = config["data"]["filepath"]["train"]
+        val_file = config["data"]["filepath"]["val"]
+        test_file = config["data"]["filepath"]["test"]
+
+        # Instantiate and load state once
+        preprocessor = DataPreprocessor(save_dir=save_dir)
+        preprocessor.load_state(state_file)
+
+        X_train, y_train, y_train_raw = load_dataset(train_file, preprocessor, config)
+        X_val, y_val, _ = load_dataset(val_file, preprocessor, config)
+        X_test, y_test, _ = load_dataset(test_file, preprocessor, config)
+
+        input_dim = X_train.shape[1]
+        with open(state_file, "r") as f:
+            preprocessor_state = json.load(f)
+            feature_names = preprocessor_state["feature_columns"]
+
+        # Compute class weights if needed
+        if config["training"]["use_class_weights"]:
+            class_weights = compute_class_weight(
+                "balanced", classes=np.unique(y_train_raw), y=y_train_raw
+            )
+            class_weights[1] *= 1.5  # Conservative boost
+            class_weights = np.clip(class_weights, 0.1, 10)
+            logger.info(f"Conservative class weights: {class_weights}")
+        else:
+            logger.debug(
+                f"Class weights applied from config: {config["training"]["use_class_weights"]}"
+                )
+            class_weights = None
+
+        # Create loaders
+        train_loader, val_loader, test_loader = create_data_loaders(
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            X_test,
+            y_test,
+            batch_size=config["training"]["batch_size"],
+            use_sampler=config["training"].get("use_sampler", False),
         )
-        class_weights = None
 
-    # Create loaders
-    train_loader, val_loader, test_loader = create_data_loaders(
-        X_train,
-        y_train,
-        X_val,
-        y_val,
-        X_test,
-        y_test,
-        batch_size=config["training"]["batch_size"],
-        use_sampler=config["training"].get("use_sampler", False),
-    )
+        # Instantiate model
+        model = instantiate_model(config["model"], input_dim)
 
-    # Instantiate model
-    model = instantiate_model(config["model"], input_dim)
+        # Trainer
+        trainer = ModelTrainer(model, config)
+        trainer.hypertune(train_loader, val_loader, input_dim, config)
 
-    # Trainer
-    trainer = ModelTrainer(model, config)
-    trainer.hypertune(train_loader, val_loader, input_dim, config)
-
-    # Train
-    training_results = trainer.train(
+        # Train
+        training_results = trainer.train(
         train_loader, val_loader, config, **config["training"]
-    )
+        )
 
-    logger.info("\n=== EVALUATING BEST MODEL ===")
-    evaluator = ModelEvaluator(
-        model=model,
-        device=trainer.device,
-        save_dir="evaluation_results",
-        config_path=config_path,
-    )
-    metrics, predictions, probabilities, targets = evaluator.evaluate(
+        # Log scalar metrics from training
+        mlflow.log_metric("best_val_loss", training_results["best_val_loss"])
+
+        # Save losses as JSON artifact
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump({"train_losses": training_results["train_losses"], "val_losses": training_results["val_losses"]}, f)
+        mlflow.log_artifact(f.name)
+        os.unlink(f.name)  # Clean up
+
+        logger.info("\n=== EVALUATING BEST MODEL ===")
+        evaluator = ModelEvaluator(
+            model=model,
+            device=trainer.device,
+            save_dir="evaluation_results",
+            config_path=config_path,
+        )
+        metrics, predictions, probabilities, targets = evaluator.evaluate(
         test_loader, feature_names=feature_names
-    )
+        )
+        # Log flat scalar metrics (use your _convert_to_serializable and filter)
+        serial_metrics = evaluator._convert_to_serializable(metrics)
+        flat_metrics = {k: v for k, v in serial_metrics.items() if isinstance(v, (int, float))}
+        mlflow.log_metrics(flat_metrics)
 
-    timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
-    filename = f"final_results_{timestamp}.json"
 
-    # Save results
-    results = {
-        "date": datetime.now().strftime("%m-%d-%Y %H:%M"),
-        "full_config": config,
-        "model_config": config["model"],
-        "training_results": training_results,
-        "test_metrics": {
-            "accuracy": metrics["accuracy"],
-            "f1_score": metrics["f1"],
-            "roc_auc": metrics["roc_auc"],
-            "recall": metrics["recall"],
-        },
-    }
-    filepath = os.path.join(save_dir, filename)
-    with open(filepath, "w") as f:
-        json.dump(results, f, indent=2)
+        timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
+        filename = f"final_results_{timestamp}.json"
+
+        # Save results
+        results = {
+            "date": datetime.now().strftime("%m-%d-%Y %H:%M"),
+            "full_config": config,
+            "model_config": config["model"],
+            "training_results": training_results,
+            "test_metrics": {
+                "accuracy": metrics["accuracy"],
+                "f1_score": metrics["f1"],
+                "roc_auc": metrics["roc_auc"],
+                "recall": metrics["recall"],
+            },
+        }
+        filepath = os.path.join(save_dir, filename)
+        with open(filepath, "w") as f:
+            json.dump(results, f, indent=2)
+
+    mlflow.pytorch.log_model(model, "model", registered_model_name="PredictorModel")
     logger.info("\n🎉 FINAL TRAINING COMPLETED!")
 
     end_time = time.time()

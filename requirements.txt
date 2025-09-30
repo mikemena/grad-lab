@@ -11,3 +11,4 @@ pyyaml
 ruamel.yaml
 streamlit
 plotly
+mlflow

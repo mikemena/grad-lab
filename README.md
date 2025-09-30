@@ -18,5 +18,8 @@
 # Compare runs
 `python src/compare_runs.py --dir evaluation_results`
 
-# Run streamlit model run comparison
+# Run streamlit model run comparison with streamlit
 `streamlit run src/model_comparison_ui.py`
+
+# Run mlflow
+`mlflow ui`
