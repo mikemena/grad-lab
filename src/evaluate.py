@@ -336,8 +336,10 @@ class ModelEvaluator:
             config = self.yaml.load(f)
 
         config_params = self._extract_key_parameters(config)
+        run_name = config["training"].get("run_name", "default_run")
 
         results = {
+            "run_name": run_name,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "metrics": self._convert_to_serializable(metrics),
             "params": config_params,

@@ -9,6 +9,7 @@ model: # Model architecture
   use_residual: false # Disable to reduce complexity
 
 training: # Training parameters
+  run_name: jax
   epochs: 50 # Reduced to speed up training
   lr: 0.001 # Standard for Adam
   loss_type: bce # 'bce', 'weighted_bce', 'focal'
@@ -30,12 +31,13 @@ tuning: # grid search
   dropout_range: [0.3, 0.4, 0.5]
 
 preprocessing:
-  save_dir: "experiments/preprocessing/artifacts"
+  save_dir: experiments/preprocessing/artifacts
 
 inference:
   cost_false_positives: 10
   cost_false_negatives: 25
   benefit_true_positives: 20
+  decision_threshold: 0.0
 
 data:
   filepath:

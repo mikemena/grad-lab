@@ -26,6 +26,7 @@ def load_all_runs(directory="evaluation_results"):
             # Extract key info
             run_info = {
                 "filename": filename,
+                "run_name": data.get("run_name", filename[:20]),  # Fallback to filename
                 "date": data.get("date", "Unknown"),
                 "metrics": data.get("metrics", data.get("test_metrics", {})),
                 "params": data.get("params", data.get("params", {})),
@@ -93,18 +94,13 @@ def extract_key_params(params):
 
 
 def create_comparison_df(selected_runs):
-    """Create DataFrame for side-by-side comparison."""
     if len(selected_runs) < 2:
         return pd.DataFrame()
 
     data = []
     for run_info in selected_runs:
         row = {
-            "Run": (
-                run_info["filename"][:20] + "..."
-                if len(run_info["filename"]) > 20
-                else run_info["filename"]
-            ),
+            "Run Name": run_info["run_name"],
             "Date": run_info["date"],
             "Accuracy": f"{run_info['key_metrics']['accuracy']:.4f}",
             "Precision": f"{run_info['key_metrics']['precision']:.4f}",
@@ -119,26 +115,18 @@ def create_comparison_df(selected_runs):
 
 
 def create_param_comparison_df(selected_runs, param_keys=None):
-    """Create parameter comparison table."""
     if not selected_runs:
         return pd.DataFrame()
 
     if not param_keys:
-        # Auto-detect common parameters across selected runs
         all_params = set()
-        for run_info in selected_runs:  # ✅ Changed from 'run' to 'run_info'
+        for run_info in selected_runs:
             all_params.update(run_info["key_params"].keys())
-        param_keys = sorted(list(all_params))[:8]  # Show top 8 params
+        param_keys = sorted(list(all_params))[:8]
 
     data = []
-    for run_info in selected_runs:  # ✅ Changed from 'run' to 'run_info'
-        row = {
-            "Run": (
-                run_info["filename"][:20] + "..."
-                if len(run_info["filename"]) > 20
-                else run_info["filename"]
-            )
-        }
+    for run_info in selected_runs:
+        row = {"Run Name": run_info["run_name"]}
         for param in param_keys:
             value = run_info["key_params"].get(param, "N/A")
             if isinstance(value, list):
@@ -221,15 +209,14 @@ def main():
     # Sidebar: Run selection
     st.sidebar.header("Select Model Runs")
 
-    # Get all filenames for dropdown
-    filenames = [run["filename"] for run in all_runs]
+    filenames = [f"{run['run_name']} ({run['date']})" for run in all_runs]
 
     # Base run selection
     st.sidebar.subheader("1. Select Base Run")
     base_run_idx = st.sidebar.selectbox(
         "Choose base model:",
         range(len(filenames)),
-        format_func=lambda i: f"{filenames[i]} ({all_runs[i]['date']})",
+        format_func=lambda i: filenames[i],
     )
 
     # Comparison runs selection (up to 4 more)
@@ -245,9 +232,7 @@ def main():
                 [""] + [j for j in range(len(filenames)) if j != base_run_idx],
                 key=f"comp_{i}",
                 index=0,
-                format_func=lambda j: (
-                    f"{filenames[j]} ({all_runs[j]['date']})" if j else "Select..."
-                ),
+                format_func=lambda j: (filenames[j] if j else "Select..."),
             )
         with col2:
             st.markdown("**✕**")
@@ -300,10 +285,8 @@ def main():
                 st.markdown("**Changed Parameters:**")
                 changes = []
                 for run_info in selected_runs[1:]:  # ✅ Fixed: iterate over runs only
-                    run_name = run_info["filename"][:20] + "..."
-                    for param in run_info[
-                        "key_params"
-                    ].keys():  # ✅ Iterate over actual params
+                    run_name = run_info["run_name"]
+                    for param in run_info["key_params"].keys():  # ✅ Iterate over actual params
                         base_val = base_params.get(param)
                         curr_val = run_info["key_params"].get(param)
                         if (
@@ -333,9 +316,7 @@ def main():
                     for run_info in selected_runs
                 ]  # ✅ Fixed variable
                 fig_biz = px.bar(
-                    x=[
-                        run_info["filename"][:15] + "..." for run_info in selected_runs
-                    ],  # ✅ Fixed variable
+                    x=[run_info["run_name"] for run_info in selected_runs], # ✅ Fixed variable
                     y=business_values,
                     title="Total Business Value",
                     color=business_values,
@@ -347,7 +328,7 @@ def main():
         with st.expander("📋 Detailed Metrics (All Runs)"):
             detailed_data = []
             for run in selected_runs:
-                row = {"Run": run["filename"]}
+                row = {"Run Name": run["run_name"], "Date": run["date"]}
                 row.update(run["key_metrics"])
                 row.update(run["key_params"])
                 detailed_data.append(row)

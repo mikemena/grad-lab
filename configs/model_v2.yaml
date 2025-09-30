@@ -8,6 +8,7 @@ model: # Model architecture
   use_residual: false
 
 training: # Training parameters
+  run_name: miami
   epochs: 50
   lr: 0.001
   loss_type: bce # 'bce', 'weighted_bce', 'focal'

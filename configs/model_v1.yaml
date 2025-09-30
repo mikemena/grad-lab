@@ -8,6 +8,7 @@ model: # Model architecture
   use_residual: false
 
 training: # Training parameters
+  run_name: tokyo
   epochs: 50
   lr: 0.0001
   loss_type: bce # 'bce', 'weighted_bce', 'focal'
