@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/26fb74d832c94adca292acff2b307d4d/artifacts
+end_time: 1759284488743
+entry_point_name: ''
+experiment_id: '227087368837385877'
+lifecycle_stage: active
+run_id: 26fb74d832c94adca292acff2b307d4d
+run_name: miami
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759284486845
+status: 3
+tags: []
+user_id: michaelmena

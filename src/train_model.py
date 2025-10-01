@@ -123,6 +123,9 @@ class ModelTrainer:
                 logger.info(
                     f"Epoch [{epoch+1}/{epochs}] - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
                 )
+            mlflow.log_metric("train_loss", train_loss, step=epoch)
+            mlflow.log_metric("val_loss", val_loss, step=epoch)
+
             if patience_counter >= patience:
                 logger.info(f"Early stopping at epoch {epoch+1}")
                 break
@@ -286,6 +289,9 @@ def main(config_path):
         X_test, y_test, _ = load_dataset(test_file, preprocessor, config)
 
         input_dim = X_train.shape[1]
+        logger.debug(f"input_dim: {input_dim}")
+        if X_train.shape[1] != config['model']['input_dim']:
+            logger.warning(f"Dataset has {X_train.shape[1]} features, but config expects {config['model']['input_dim']}")
         with open(state_file, "r") as f:
             preprocessor_state = json.load(f)
             feature_names = preprocessor_state["feature_columns"]
@@ -379,6 +385,7 @@ def main(config_path):
 
     end_time = time.time()
     total_runtime = (end_time - start_time)/60
+    mlflow.log_metric("total_runtime_minutes", total_runtime)
     logger.info(f"Training Completed: Total runtime: {total_runtime}")
 
 

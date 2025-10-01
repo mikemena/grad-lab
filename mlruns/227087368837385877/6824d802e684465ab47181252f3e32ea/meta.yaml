@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/6824d802e684465ab47181252f3e32ea/artifacts
+end_time: 1759284490250
+entry_point_name: ''
+experiment_id: '227087368837385877'
+lifecycle_stage: active
+run_id: 6824d802e684465ab47181252f3e32ea
+run_name: incongruous-ant-697
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759284490242
+status: 3
+tags: []
+user_id: michaelmena

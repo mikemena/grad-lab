@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/4782550b19a548379bad9557969dd1b8/artifacts
+end_time: 1759284477857
+entry_point_name: ''
+experiment_id: '227087368837385877'
+lifecycle_stage: active
+run_id: 4782550b19a548379bad9557969dd1b8
+run_name: tokyo
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759284476019
+status: 3
+tags: []
+user_id: michaelmena

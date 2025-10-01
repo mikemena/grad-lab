@@ -92,8 +92,9 @@ class ImprovedPredictor(Predictor):
         self.layers = nn.ModuleList()
         prev_dim = input_dim
         for i, hidden_dim in enumerate(hidden_dims):
+            layer_block = nn.ModuleList()
             # Linear layer
-            layer_block = nn.ModuleList([nn.Linear(prev_dim, hidden_dim)])
+            layer_block.append(nn.Linear(prev_dim, hidden_dim))
             # Batch normalization
             if use_batch_norm:
                 layer_block.append(nn.BatchNorm1d(hidden_dim))
@@ -106,13 +107,11 @@ class ImprovedPredictor(Predictor):
                 layer_block.append(nn.GELU())
             elif activation == "swish":
                 layer_block.append(nn.SiLU())
-            self.layers.append(layer_block)
-
             # Dropout
             layer_block.append(nn.Dropout(dropout_rate))
-
+            # Append the complete layer block once
             self.layers.append(layer_block)
-            # Residual connection projection if dimensions don't match
+            # Residual connection projection
             if use_residual and prev_dim != hidden_dim:
                 setattr(self, f"residual_proj_{i}", nn.Linear(prev_dim, hidden_dim))
             prev_dim = hidden_dim
@@ -136,7 +135,7 @@ class ImprovedPredictor(Predictor):
                     residual = getattr(self, f"residual_proj_{i}")(residual)
                 if x.shape == residual.shape:
                     x += residual
-        return super().forward(x)
+        return self.output_layer(x).squeeze()
 
 
 class FocalLoss(nn.Module):
@@ -172,7 +171,7 @@ class LogisticRegression(nn.Module):
         super().__init__()
         self.input_dim = input_dim
         # A pure logistic regression classifier
-        self.linear - nn.Linear(input_dim, 1)
+        self.linear = nn.Linear(input_dim, 1)
 
     def forward(self, x):
         # Output raw logits (sigmoid applied in loss function or during inference)

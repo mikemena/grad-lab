@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/db9a0cbec114467c9012632078bbc155/artifacts
+end_time: 1759284501511
+entry_point_name: ''
+experiment_id: '227087368837385877'
+lifecycle_stage: active
+run_id: db9a0cbec114467c9012632078bbc155
+run_name: jax
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759284500016
+status: 3
+tags: []
+user_id: michaelmena

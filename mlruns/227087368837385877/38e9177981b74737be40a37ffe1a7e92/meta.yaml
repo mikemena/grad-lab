@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/38e9177981b74737be40a37ffe1a7e92/artifacts
+end_time: 1759284513821
+entry_point_name: ''
+experiment_id: '227087368837385877'
+lifecycle_stage: active
+run_id: 38e9177981b74737be40a37ffe1a7e92
+run_name: sydney
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759284511921
+status: 3
+tags: []
+user_id: michaelmena

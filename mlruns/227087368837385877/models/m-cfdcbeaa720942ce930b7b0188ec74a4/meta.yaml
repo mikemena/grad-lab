@@ -1,0 +1,10 @@
+artifact_location: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/models/m-cfdcbeaa720942ce930b7b0188ec74a4/artifacts
+creation_timestamp: 1759276485127
+experiment_id: '227087368837385877'
+last_updated_timestamp: 1759276486598
+model_id: m-cfdcbeaa720942ce930b7b0188ec74a4
+model_type: null
+name: model
+source_run_id: null
+status: 2
+status_message: null

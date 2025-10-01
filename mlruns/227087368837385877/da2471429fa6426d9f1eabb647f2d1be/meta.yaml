@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/da2471429fa6426d9f1eabb647f2d1be/artifacts
+end_time: 1759284503008
+entry_point_name: ''
+experiment_id: '227087368837385877'
+lifecycle_stage: active
+run_id: da2471429fa6426d9f1eabb647f2d1be
+run_name: loud-kite-165
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759284503000
+status: 3
+tags: []
+user_id: michaelmena

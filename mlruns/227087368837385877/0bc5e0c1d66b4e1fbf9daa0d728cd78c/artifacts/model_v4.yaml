@@ -1,0 +1,47 @@
+model: # Model architecture
+  type: logistic # basic,improved, logistic
+  input_dim: 28
+  hidden_dims: [] # logistic regression doesn’t use
+  dropout_rate: 0 # logistic regression doesn’t use
+  activation: relu # relu, gelu, leaky_relu, swish, but logistic regression doesn’t use
+  use_batch_norm: false # logistic regression doesn’t use
+  use_residual: false # logistic regression doesn’t use
+
+training: # Training parameters
+  run_name: "sydney"
+  epochs: 50
+  lr: 0.0001
+  loss_type: bce # 'bce', 'weighted_bce', 'focal'
+  alpha: 0.25 # For focal/weighted
+  gamma: 2.0
+  optimizer_name: Adam # Adam, AdamW
+  weight_decay: 0.0
+  patience: 10
+  min_delta: 0.0001
+  use_class_weights: false
+  use_scheduler: false
+  scheduler_type: cosine # If true
+  batch_size: 32
+
+tuning: # grid search
+  enabled: false # Set to true to run tuning
+  lr_range: [0.0005, 0.001, 0.005, 0.01]
+  hidden_dims_options: [[128], [256, 128], [512, 256, 128]]
+  dropout_range: [0.2, 0.3, 0.4, 0.5]
+
+preprocessing:
+  save_dir: experiments/preprocessing/artifacts
+
+inference:
+  cost_false_positives: 10
+  cost_false_negatives: 25
+  benefit_true_positives: 20
+  decision_threshold: 0.38999999999999985
+
+data:
+  filepath:
+    state: experiments/preprocessing/artifacts/preprocessor_state.json
+    train: experiments/preprocessing/artifacts/titanic_train_processed.xlsx
+    val: experiments/preprocessing/artifacts/titanic_val_processed.xlsx
+    test: experiments/preprocessing/artifacts/titanic_test_processed.xlsx
+  target_column: Survived
