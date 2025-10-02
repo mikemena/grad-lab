@@ -354,7 +354,7 @@ def main(config_path):
         metrics, predictions, probabilities, targets = evaluator.evaluate(
         test_loader, feature_names=feature_names
         )
-        # Log flat scalar metrics (use your _convert_to_serializable and filter)
+        # Log flat scalar metrics
         serial_metrics = evaluator._convert_to_serializable(metrics)
         flat_metrics = {k: v for k, v in serial_metrics.items() if isinstance(v, (int, float))}
         mlflow.log_metrics(flat_metrics)
