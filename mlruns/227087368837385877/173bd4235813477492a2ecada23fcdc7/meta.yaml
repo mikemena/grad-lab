@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/mike/Documents/red/grad-lab/mlruns/227087368837385877/173bd4235813477492a2ecada23fcdc7/artifacts
+end_time: 1759540926448
+entry_point_name: ''
+experiment_id: '227087368837385877'
+lifecycle_stage: active
+run_id: 173bd4235813477492a2ecada23fcdc7
+run_name: invincible-shark-262
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759540926439
+status: 3
+tags: []
+user_id: michaelmena
