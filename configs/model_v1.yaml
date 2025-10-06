@@ -1,21 +1,21 @@
 model: # Model architecture
   type: basic # basic,improved, logistic
-  input_dim: 28
-  hidden_dims: [128, 64]
-  dropout_rate: 0.2
+  input_dim: 14
+  hidden_dims: [64]
+  dropout_rate: 0.7
   activation: relu # relu, gelu, leaky_relu, swish
   use_batch_norm: true
   use_residual: false
 
 training: # Training parameters
   run_name: tokyo
-  epochs: 50
-  lr: 0.0001
+  epochs: 25
+  lr: 0.02
   loss_type: bce # 'bce', 'weighted_bce', 'focal'
   alpha: 0.25 # For focal/weighted
   gamma: 2.0
   optimizer_name: Adam # Adam, AdamW
-  weight_decay: 0.0
+  weight_decay: 0.001
   patience: 10
   min_delta: 0.0001
   use_class_weights: false
