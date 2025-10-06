@@ -58,3 +58,4 @@ TODO.md
 evaluation_results/
 notebooks/
 logs/
+mlruns/
