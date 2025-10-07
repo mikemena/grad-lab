@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from models.predictor import Predictor, ImprovedPredictor, FocalLoss, LogisticRegression  # Relative import
+from models.tree_models import make_random_forest, make_xgboost
 from logger import setup_logger
 from data.data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
@@ -202,6 +203,12 @@ def instantiate_model(model_config, input_dim):
         return ImprovedPredictor(input_dim=input_dim, **model_params)
     elif model_type =="logistic":
         return LogisticRegression(input_dim=input_dim, **model_params)
+    elif model_type == "rf": # Random Forest
+        params = {**model_config.get("tree_params", {}), **model_config.get("rf_params", {})}
+        return make_random_forest(params)
+    elif model_type == "xgb": # XGBoost
+        params = {**model_config.get("tree_params", {}), **model_config.get("xgb_params", {})}
+        return make_xgboost(params)
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 

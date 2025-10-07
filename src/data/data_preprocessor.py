@@ -610,3 +610,18 @@ class DataPreprocessor:
             excel_filename=excel_filename or "inference_processed.xlsx",
             fit=False,
         )
+
+    # Current preprocessor scale features for the NN, but For tree models, no need to scale
+
+    def transform_for_nn(self, df, target_column):
+        """Existing behavior (scaled numeric tensors for NN)."""
+        X, y, feat_names = self.transform(df, target_column=target_column, scale=True)
+        return X, y, feat_names
+
+    def transform_for_trees(self, df, target_column):
+        """Tree-friendly: no scaling; dense numeric; OHE retained as numeric columns."""
+        X, y, feat_names = self.transform(df, target_column=target_column, scale=False)
+        # Ensure X is a dense numpy array for sklearn/xgboost
+        if hasattr(X, "toarray"):
+            X = X.toarray()
+        return X, y, feat_names
