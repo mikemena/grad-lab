@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from models.predictor import Predictor, ImprovedPredictor, FocalLoss, LogisticRegression  # Relative import
-from models.tree_models import make_random_forest, make_xgboost
 from logger import setup_logger
 from data.data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
@@ -24,25 +23,15 @@ yaml = YAML()
 
 
 class ModelTrainer:
-    def __init__(self, model, config, logger, mlflow_run=None):
+    def __init__(self, model, config, device=None):
         self.model = model
         self.config = config
-        self.mlflow_run = mlflow_run
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"
+        self.device = device or torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
         )
         self.model.to(self.device)
         self.train_losses = []
         self.val_losses = []
-        # used to avoid torch nn.Module
-        self.is_tree_based_model = (hasattr(self.model, "fit")
-                and hasattr(self.model, "predict_proba")
-                and not hasattr(self.model, "parameters")
-        )
-
-        # Only send to device if PyTorch model
-        if not self.is_tree_model and hasattr(self.model, "to"):
-            self.model.to(self.device)
-
         # Handle loss based on config
         loss_type = config["training"]["loss_type"]
         if loss_type == "focal":
@@ -93,18 +82,6 @@ class ModelTrainer:
         return total_loss / num_batches
 
     def train(self, train_loader, val_loader, config, **kwargs):
-        if self.is_tree_based_model:
-            X_train, y_train = self.X_train.numpy(), self.y_train.numpy().ravel()
-            X_val, y_val = self.X_val.numpy(), self.y_val.numpy().ravel()
-
-            # Fit the model
-            self.model.fit(X_train, X_val)
-
-            # Predict probabilities & labels
-            y_pred_proba = self.model.predict_proba(X_val)[:, 1]
-            y_pred = (y_pred_proba >= 0.5).astype(int)
-
-            # Compute metrics
         """Train the model with early stopping."""
         epochs = kwargs.get("epochs", 50)
         lr = kwargs.get("lr", 0.001)
@@ -225,18 +202,6 @@ def instantiate_model(model_config, input_dim):
         return ImprovedPredictor(input_dim=input_dim, **model_params)
     elif model_type =="logistic":
         return LogisticRegression(input_dim=input_dim, **model_params)
-    elif model_type == "rf": # Random Forest
-        model = make_random_forest(
-            tree_params=model_config.get("tree_params"),
-            rf_params=model_config.get("rf_params")
-        )
-        return model
-    elif model_type == "xgb": # XGBoost
-        model = make_xgboost(
-            tree_params=model_config.get("tree_params"),
-            xgb_params=model_config.get("xgb_params")
-        )
-        return model
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
