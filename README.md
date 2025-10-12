@@ -8,8 +8,11 @@
 # Run from project root: cd /Users/mike/Documents/red/grad-lab
 `python src/data/prepare_data.py --config configs/pipeline_v1.yaml`
 
-# Run train model
+# Run train model - PyTorch
 `python src/train_model.py --config configs/model_v1.yaml`
+
+# Run train model - Tree-Based
+`python src/train_tree_models.py --config configs/model_v1.yaml`
 
 # Predict with custom input
 

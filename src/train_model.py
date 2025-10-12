@@ -4,12 +4,12 @@ from ruamel.yaml import YAML
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from models.predictor import Predictor, ImprovedPredictor, FocalLoss, LogisticRegression  # Relative import
 from logger import setup_logger
 from data.data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
+from models.predictor import FocalLoss
+from utils import instantiate_model, load_dataset, _flatten_dict
 import numpy as np
-import pandas as pd
 from datetime import datetime
 import json
 from evaluate import ModelEvaluator
@@ -187,43 +187,6 @@ class ModelTrainer:
             self.model = instantiate_model(self.config["model"], input_dim)
 
 
-def instantiate_model(model_config, input_dim):
-    model_type = model_config["type"]
-    # Create a copy of model_config without input_dim and type
-    model_params = model_config.copy()
-    if "input_dim" in model_params:
-        del model_params["input_dim"]
-    if "type" in model_params:
-        del model_params["type"]
-
-    if model_type == "basic":
-        return Predictor(input_dim=input_dim, **model_params)
-    elif model_type == "improved":
-        return ImprovedPredictor(input_dim=input_dim, **model_params)
-    elif model_type =="logistic":
-        return LogisticRegression(input_dim=input_dim, **model_params)
-    else:
-        raise ValueError(f"Unknown model_type: {model_type}")
-
-
-def load_dataset(file_path, preprocessor, config):
-    """Load dataset with preprocessing."""
-    # preprocessor = DataPreprocessor(save_dir=save_dir)
-    # logger.debug(f"Loading state for: {file_path}")
-    # preprocessor.load_state(state_file)
-    df = pd.read_excel(file_path)
-    target_column = config["data"]["target_column"]
-    X = df.drop([target_column], axis=1, errors="ignore").values
-    y_raw = df[target_column].values
-    if preprocessor.target_type in ["binary", "categorical"]:
-        y = preprocessor.target_label_encoder.transform(y_raw)
-    else:
-        y = y_raw
-    X_tensor = torch.tensor(X, dtype=torch.float32)
-    y_tensor = torch.tensor(y, dtype=torch.float32)
-    return X_tensor, y_tensor, y_raw
-
-
 def create_data_loaders(
     X_train, y_train, X_val, y_val, X_test, y_test, batch_size=32, use_sampler=False
 ):
@@ -243,15 +206,7 @@ def create_data_loaders(
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, val_loader, test_loader
 
-def _flatten_dict(d, parent_key='', sep='_'):
-    items = []
-    for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
-        if isinstance(v, dict):
-            items.extend(_flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
+
 
 def main(config_path):
     start_time = time.time()

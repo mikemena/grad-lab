@@ -4,8 +4,6 @@ import time
 import json
 import tempfile
 from datetime import datetime
-import numpy as np
-import pandas as pd
 from sklearn.metrics import log_loss
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
@@ -13,8 +11,9 @@ from sklearn.model_selection import GridSearchCV
 from ruamel.yaml import YAML
 import mlflow
 import joblib
-from train_model import load_dataset, instantiate_model, _flatten_dict, DataPreprocessor
+from data.data_preprocessor import DataPreprocessor
 from evaluate import ModelEvaluator
+from utils import instantiate_model, load_dataset, _flatten_dict
 from logger import setup_logger
 
 logger = setup_logger(__name__, include_location=True)
@@ -61,8 +60,8 @@ class TreeModelTrainer:
         }
 
     def hypertune(self, X_train, y_train, X_val, y_val, config):
-        """Perform grid search for tree-based models (placeholder)."""
-        if not self.config["tuning"]["enabled"]:
+        """Perform grid search for tree-based models."""
+        if not self.config["tuning"].get("enabled", False):
             logger.info("Tuning disabled in config; skipping.")
             return
 
@@ -70,6 +69,7 @@ class TreeModelTrainer:
         model_type = self.config["model"]["type"]
 
         # Define parameter grid based on model type
+        param_grid = {}
         if model_type == "rf":
             param_grid = {
                 "n_estimators": self.config["tuning"].get("n_estimators_range", [100, 200, 400]),
@@ -88,6 +88,10 @@ class TreeModelTrainer:
             logger.warning(f"No tuning grid defined for model type: {model_type}")
             return
 
+        if not param_grid:
+            logger.warning("Empty parameter grid; skipping tuning.")
+            return
+
         with mlflow.start_run(nested=True, run_name=f"grid_search_{model_type}"):
             grid_search = GridSearchCV(
                 estimator=self.model,
@@ -101,14 +105,14 @@ class TreeModelTrainer:
 
             # Log best params and score
             best_params = grid_search.best_params_
-            best_score = -grid_search.best_score_  # Convert back to positive log_loss
+            best_score = -grid_search.best_score_  # Convert to positive log_loss
             mlflow.log_params(best_params)
             mlflow.log_metric("best_val_loss", best_score)
             logger.info(f"Best params: {best_params}, Best val loss: {best_score:.4f}")
 
-            # Update model with best params
+            # Update model and config with best params
             self.model = grid_search.best_estimator_
-            self.config["model"].update(best_params)  # Update config for consistency
+            self.config["model"].update(best_params)
 
 def main(config_path):
     start_time = time.time()

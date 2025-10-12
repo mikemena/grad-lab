@@ -26,25 +26,23 @@ import json
 from datetime import datetime
 from logger import setup_logger
 import mlflow
-from util import flatten_dict, filter_numeric_metrics
+from utils import filter_numeric_metrics
 
 logger = setup_logger(__name__, include_location=True)
-
 yaml = YAML()
-
 
 class ModelEvaluator:
     def __init__(
         self, model=None, device=None, save_dir="evaluation_results", config_path=None
     ):
         self.model = model
-        self.device = device or torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.is_torch_model = hasattr(self.model, "parameters") and callable(self.model.parameters)
+        if not self.is_torch_model:
+            self.device = None  # No device for non-torch models
         self.metrics_history = []
         self.save_dir = save_dir
         self.config_path = config_path
-        self.yaml = yaml
         os.makedirs(self.save_dir, exist_ok=True)
         if config_path:
             logger.info(f"ModelEvaluator initialized with config_path: {config_path}")
@@ -71,25 +69,32 @@ class ModelEvaluator:
             return obj.cpu().numpy().tolist()
         return obj
 
-    def evaluate(self, test_loader, feature_names=None):
-        """Evaluate model on test set with comprehensive metrics"""
+    def evaluate(self, test_data, feature_names=None):
+        """Evaluate model on test set with comprehensive metrics."""
         if self.model is None:
             logger.error("No model provided for evaluation")
             raise ValueError("Model must be provided for evaluation")
 
-        self.model.eval()
         predictions = []
         probabilities = []
         targets = []
 
-        with torch.no_grad():
-            for batch_x, batch_y in test_loader:
-                batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
-                logits = self.model(batch_x)
-                probs = torch.sigmoid(logits)
-                probabilities.extend(probs.cpu().numpy())
-                predictions.extend((probs >= 0.5).float().cpu().numpy())
-                targets.extend(batch_y.cpu().numpy())
+        if self.is_torch_model:
+            self.model.eval()
+            with torch.no_grad():
+                for batch_x, batch_y in test_data:  # Expect DataLoader
+                    batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
+                    logits = self.model(batch_x)
+                    probs = torch.sigmoid(logits)
+                    probabilities.extend(probs.cpu().numpy())
+                    predictions.extend((probs >= 0.5).float().cpu().numpy())
+                    targets.extend(batch_y.cpu().numpy())
+        else:
+            # For trees: Expect test_data as list of (X, y) tuples
+            X_test, y_test = test_data[0]  # Single tuple for batch prediction
+            probabilities = self.model.predict_proba(X_test)[:, 1]
+            predictions = (probabilities >= 0.5).astype(int)
+            targets = y_test
 
         predictions = np.array(predictions).flatten()
         probabilities = np.array(probabilities).flatten()
@@ -157,7 +162,7 @@ class ModelEvaluator:
     def comprehensive_evaluation(
         self, y_true, y_pred_proba, y_pred_binary, threshold=0.5
     ):
-        """Compute comprehensive evaluation metrics"""
+        """Compute comprehensive evaluation metrics."""
         try:
             metrics = {
                 "accuracy": accuracy_score(y_true, y_pred_binary),
@@ -197,18 +202,18 @@ class ModelEvaluator:
             raise
 
     def precision_at_k(self, y_true, y_scores, k):
-        """Precision at top k predictions"""
+        """Precision at top k predictions."""
         top_k_indices = np.argsort(y_scores)[-k:]
         return np.mean(y_true[top_k_indices])
 
     def lift_at_k(self, y_true, y_scores, k):
-        """Lift at top k predictions"""
+        """Lift at top k predictions."""
         precision_at_k = self.precision_at_k(y_true, y_scores, k)
         baseline_precision = np.mean(y_true)
         return precision_at_k / baseline_precision if baseline_precision > 0 else 0
 
     def optimize_threshold(self, y_true, y_pred_proba, metric="recall"):
-        """Find optimal threshold for binary classification"""
+        """Find optimal threshold for binary classification."""
         thresholds = np.arange(0.1, 0.9, 0.01)
         scores = []
 
@@ -233,7 +238,7 @@ class ModelEvaluator:
         return thresholds[optimal_idx], scores[optimal_idx], thresholds, scores
 
     def compute_data_drift(self, X_train, X_new, feature_names):
-        """Detect data drift using statistical tests"""
+        """Detect data drift using statistical tests."""
         drift_results = {}
         for i, feature in enumerate(feature_names):
             train_feature = X_train[:, i]
@@ -250,7 +255,7 @@ class ModelEvaluator:
     def monitor_performance_degradation(
         self, current_metrics, baseline_metrics, threshold=0.05
     ):
-        """Check if model performance has degraded significantly"""
+        """Check if model performance has degraded significantly."""
         degradation_alerts = {}
         for metric, current_value in current_metrics.items():
             if metric in baseline_metrics and isinstance(current_value, (int, float)):
@@ -269,7 +274,7 @@ class ModelEvaluator:
         return degradation_alerts
 
     def plot_evaluation_metrics(self, metrics, targets, probabilities, feature_names):
-        """Generate and save evaluation plots"""
+        """Generate and save evaluation plots."""
         try:
             plt.figure(figsize=(8, 6))
             cm = confusion_matrix(targets, (probabilities >= 0.5).astype(int))
@@ -280,197 +285,45 @@ class ModelEvaluator:
 
             fpr, tpr, _ = roc_curve(targets, probabilities)
             plt.figure(figsize=(8, 6))
-            plt.plot(fpr, tpr, label=f'ROC AUC = {metrics["roc_auc"]:.4f}')
-            plt.plot([0, 1], [0, 1], "k--")
+            plt.plot(fpr, tpr, label=f"ROC Curve (AUC = {metrics['roc_auc']:.2f})")
+            plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
             plt.xlabel("False Positive Rate")
             plt.ylabel("True Positive Rate")
             plt.title("ROC Curve")
             plt.legend()
+            plt.grid(True)
             plt.savefig(os.path.join(self.save_dir, "roc_curve.png"))
             plt.close()
 
-            precision, recall, thresholds = precision_recall_curve(
-                targets, probabilities
-            )
+            precision, recall, _ = precision_recall_curve(targets, probabilities)
             plt.figure(figsize=(8, 6))
-            plt.plot(
-                recall, precision, label=f'AP = {metrics["average_precision"]:.4f}'
-            )
-            optimal_recall_threshold = metrics.get("optimal_recall_threshold", 0.5)
-            idx = np.argmin(np.abs(thresholds - optimal_recall_threshold))
-            plt.scatter(
-                recall[idx],
-                precision[idx],
-                color="red",
-                s=100,
-                label=f"Optimal Recall Threshold = {optimal_recall_threshold:.2f}",
-            )
+            plt.plot(recall, precision, label=f"PR Curve (AP = {metrics['average_precision']:.2f})")
             plt.xlabel("Recall")
             plt.ylabel("Precision")
             plt.title("Precision-Recall Curve")
             plt.legend()
             plt.grid(True)
-            plt.savefig(os.path.join(self.save_dir, "precision_recall_curve.png"))
+            plt.savefig(os.path.join(self.save_dir, "pr_curve.png"))
             plt.close()
-
-            metric_names = [
-                "accuracy",
-                "precision",
-                "recall",
-                "f1",
-                "f2",
-                "matthews_corrcoef",
-            ]
-            values = [metrics.get(m, 0) for m in metric_names]
-            plt.figure(figsize=(10, 6))
-            sns.barplot(x=metric_names, y=values)
-            plt.title("Classification Metrics")
-            plt.xticks(rotation=45)
-            plt.savefig(os.path.join(self.save_dir, "metrics_bar.png"))
-            plt.close()
-
         except Exception as e:
-            logger.error(f"Error in plotting evaluation metrics: {str(e)}")
-
-        mlflow.log_artifact("evaluation_results/confusion_matrix.png")
+            logger.error(f"Error generating plots: {str(e)}")
+            raise
 
     def save_evaluation_results(self, metrics, targets, probabilities):
-        """Save evaluation results to JSON and update config with optimal threshold"""
+        """Save evaluation results to JSON."""
         timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
-        filename = f"eval_{timestamp}.json"
-        if self.config_path is None:
-            raise ValueError(
-                "config_path must be provided to load business costs/benefits."
-            )
-        with open(self.config_path, "r") as f:
-            config = self.yaml.load(f)
-
-        config_params = self._extract_key_parameters(config)
-        run_name = config["training"].get("run_name", "default_run")
-
-        results = {
-            "run_name": run_name,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "metrics": self._convert_to_serializable(metrics),
-            "params": config_params,
-            "predictions": self._convert_to_serializable(probabilities),
-            "targets": self._convert_to_serializable(targets),
-        }
-        flat_results = flatten_dict(results)
+        filename = f"evaluation_results_{timestamp}.json"
         filepath = os.path.join(self.save_dir, filename)
+        results = {
+            "date": datetime.now().strftime("%m-%d-%Y %H:%M"),
+            "metrics": self._convert_to_serializable(metrics),
+            "predictions": probabilities.tolist(),
+            "targets": targets.tolist(),
+        }
         with open(filepath, "w") as f:
-            json.dump(flat_results, f, indent=2)
-        logger.info(
-            f"Evaluation results saved to {self.save_dir}/evaluation_results.json"
-        )
-
-    def _extract_key_parameters(self, config):
-        """Extract key parameters from YAML config for UI display"""
-        key_params = {}
-
-        if not isinstance(config, dict):
-            logger.error("Config is not a dictionary")
-            return key_params
-
-        # Model architecture params
-        if "model" in config:
-            model_config = config["model"]
-            key_params.update(
-                {
-                    "model_type": model_config.get("type", "N/A"),
-                    "input_dim": model_config.get("input_dim", "N/A"),
-                    "hidden_dims": model_config.get("hidden_dims", "N/A"),
-                    "dropout_rate": model_config.get("dropout_rate", "N/A"),
-                    "activation": model_config.get("activation", "N/A"),
-                    "use_batch_norm": model_config.get("use_batch_norm", "N/A"),
-                    "use_residual": model_config.get("use_residual", "N/A"),
-                }
-            )
-        if "training" in config:
-            training_config = config["training"]
-            key_params.update(
-                {
-                    "epochs": training_config.get("epochs", "N/A"),
-                    "lr": training_config.get("lr", "N/A"),
-                    "batch_size": training_config.get("batch_size", "N/A"),
-                    "loss_type": training_config.get("loss_type", "N/A"),
-                    "alpha": training_config.get("alpha", "N/A"),
-                    "gamma": training_config.get("gamma", "N/A"),
-                    "optimizer": training_config.get("optimizer", "N/A"),
-                    "weight_decay": training_config.get("weight_decay", "N/A"),
-                    "patience": training_config.get("patience", "N/A"),
-                    "use_class_weights": training_config.get(
-                        "use_class_weights", "N/A"
-                    ),
-                }
-            )
-
-        # Tuning params (if enabled)
-        if config.get("tuning", {}).get("enabled", False):
-            tuning_config = config["tuning"]
-            key_params.update(
-                {
-                    "tuning_enabled": True,
-                    "lr_range": tuning_config.get("lr_range", "N/A"),
-                    "hidden_dims_options": tuning_config.get(
-                        "hidden_dims_options", "N/A"
-                    ),
-                }
-            )
-
-        # Business cost/benefits
-        if "inference" in config:
-            inference_config = config["inference"]
-            key_params.update(
-                {
-                    "cost_fp": inference_config.get("cost_false_positives", "N/A"),
-                    "cost_fn": inference_config.get("cost_false_negatives", "N/A"),
-                    "benefit_tp": inference_config.get("benefit_true_positives", "N/A"),
-                    "decision_threshold": inference_config.get(
-                        "decision_threshold", "N/A"
-                    ),
-                }
-            )
-
-        # key_params = self._extract_key_parameters(config)
-        # flat_params = filter_numeric_metrics(key_params)
-        # mlflow.log_params(flat_params)  # MLflow's log_params accepts strings, so adjust filtering if needed
-
-        if self.config_path:
-            try:
-                if "inference" not in config or not isinstance(config["inference"], dict):
-                    logger.error("No valid 'inference' section found in config")
-                    raise KeyError("inference")
-                if "decision_threshold" not in config["inference"]:
-                    logger.error("Key 'decision_threshold' not found in config['inference']")
-                    raise KeyError("decision_threshold")
-
-                # Set YAML formatting options
-                self.yaml.preserve_quotes = True
-                self.yaml.default_flow_style = None
-
-                # Update decision_threshold (e.g., with optimal_business_threshold if available)
-                # Note: metrics should be passed from evaluate if needed
-                # For now, preserve existing decision_threshold
-                config["inference"]["decision_threshold"] = float(
-                        config["inference"]["decision_threshold"]
-                            )
-
-                # Write updated config
-                with open(self.config_path, "w") as f:
-                    self.yaml.dump(config, f)
-                    logger.info(f"Updated config {self.config_path} with decision threshold: {config['inference']['decision_threshold']:.2f}"
-                            )
-            except FileNotFoundError:
-                logger.error(f"Config file not found: {self.config_path}")
-                raise
-            except Exception as e:
-                logger.error(f"Failed to update config file {self.config_path}: {str(e)}")
-                raise
-        else:
-            logger.warning("No config_path provided; skipping config update")
-
-        return key_params
+            json.dump(results, f, indent=2)
+        mlflow.log_artifact(filepath)
+        logger.info(f"Saved evaluation results to {filepath}")
 
     def plot_training_history(
         self,
@@ -480,13 +333,13 @@ class ModelEvaluator:
         save=True,
         filename="training_history.png",
     ):
-        """Plot training and validation loss history"""
+        """Plot training and validation loss history."""
         plt.figure(figsize=(10, 5))
         plt.plot(train_losses, label="Training Loss")
         plt.plot(val_losses, label="Validation Loss")
         plt.title("Training History")
         plt.xlabel("Epoch")
-        plt.ylabel("Loss (BCE)")
+        plt.ylabel("Loss (Log Loss)")
         plt.legend()
         plt.grid(True)
 
@@ -507,14 +360,12 @@ class ModelEvaluator:
         save=True,
         filename="data_distribution.png",
     ):
-        """Plot histogram of numerical features to show data distribution with improved readability"""
+        """Plot histogram of numerical features to show data distribution."""
         df = pd.DataFrame(data, columns=column_names)
         n_features = len(column_names)
-        n_rows = (
-            n_features + max_cols - 1
-        ) // max_cols  # Dynamic rows based on features
+        n_rows = (n_features + max_cols - 1) // max_cols
 
-        plt.figure(figsize=(15, 5 * n_rows))  # Adjust height based on number of rows
+        plt.figure(figsize=(15, 5 * n_rows))
         for idx, column in enumerate(column_names):
             plt.subplot(n_rows, max_cols, idx + 1)
             sns.histplot(df[column], bins=30, kde=True)
@@ -524,8 +375,7 @@ class ModelEvaluator:
             plt.xticks(fontsize=8)
             plt.yticks(fontsize=8)
 
-        plt.tight_layout(pad=2.0)  # Increase padding to avoid overlap
-
+        plt.tight_layout(pad=2.0)
         if save:
             full_path = os.path.join(self.save_dir, filename)
             plt.savefig(full_path, dpi=300, bbox_inches="tight")
@@ -542,7 +392,7 @@ class ModelEvaluator:
         save=True,
         filename="prediction_distribution.png",
     ):
-        """Plot distribution of predicted probabilities by class"""
+        """Plot distribution of predicted probabilities by class."""
         plt.figure(figsize=(8, 6))
         plt.hist(
             predictions[targets == 0], bins=20, alpha=0.5, label="Class 0", color="blue"
@@ -568,7 +418,8 @@ class ModelEvaluator:
             plt.show()
         plt.close()
 
-    def visualize_original_vs_synthetic_samples():
+    def visualize_original_vs_synthetic_samples(self):
+        """Visualize original vs. resampled data using PCA."""
         original_train = pd.read_excel("debug_splits/raw_train_split.xlsx")
         resampled_train = pd.read_excel(
             "preprocessing_artifacts/loan_train_resampled.xlsx"
@@ -582,6 +433,7 @@ class ModelEvaluator:
         X_original_pca = pca.fit_transform(X_original)
         X_resampled_pca = pca.transform(X_resampled)
 
+        plt.figure(figsize=(8, 6))
         plt.scatter(
             X_original_pca[:, 0],
             X_original_pca[:, 1],
@@ -598,8 +450,9 @@ class ModelEvaluator:
         )
         plt.legend()
         plt.title("PCA of Original vs. Resampled Data")
-        plt.show()
-
+        plt.savefig(os.path.join(self.save_dir, "pca_original_vs_resampled.png"))
+        mlflow.log_artifact(os.path.join(self.save_dir, "pca_original_vs_resampled.png"))
+        plt.close()
 
 class BusinessImpactAnalyzer:
     def __init__(self, config_path=None):
@@ -607,11 +460,9 @@ class BusinessImpactAnalyzer:
         self.yaml = yaml
 
     def calculate_business_value(self, y_true, y_pred):
-        """Calculate business value based on confusion matrix"""
+        """Calculate business value based on confusion matrix."""
         if self.config_path is None:
-            raise ValueError(
-                "config_path must be provided to load business costs/benefits."
-            )
+            raise ValueError("config_path must be provided to load business costs/benefits.")
         with open(self.config_path, "r") as f:
             config = self.yaml.load(f)
 
@@ -625,9 +476,9 @@ class BusinessImpactAnalyzer:
         try:
             tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
             total_value = (
-                tp * benefit_tp  # Revenue from true positives
-                - fp * cost_fp  # Cost of false positives
-                - fn * cost_fn  # Cost of false negatives
+                tp * benefit_tp
+                - fp * cost_fp
+                - fn * cost_fn
             )
             logger.info(f"Total Value: {total_value}")
             business_metrics = {
@@ -645,14 +496,12 @@ class BusinessImpactAnalyzer:
 
             return business_metrics
 
-
         except Exception as e:
             logger.error(f"Error in business value calculation: {str(e)}")
             raise
 
-
     def optimize_for_business_value(self, y_true, y_pred_proba):
-        """Find threshold that maximizes business value"""
+        """Find threshold that maximizes business value."""
         try:
             thresholds = np.arange(0.1, 0.9, 0.01)
             business_values = []
@@ -667,7 +516,6 @@ class BusinessImpactAnalyzer:
         except Exception as e:
             logger.error(f"Error in business value optimization: {str(e)}")
             raise
-
 
 if __name__ == "__main__":
     logger.info("This module is intended to be imported and used with a trained model.")
