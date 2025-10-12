@@ -204,11 +204,17 @@ def instantiate_model(model_config, input_dim):
     elif model_type =="logistic":
         return LogisticRegression(input_dim=input_dim, **model_params)
     elif model_type == "rf": # Random Forest
-        params = {**model_config.get("tree_params", {}), **model_config.get("rf_params", {})}
-        return make_random_forest(params)
+        model = make_random_forest(
+            tree_params=model_config.get("tree_params"),
+            rf_params=model_config.get("rf_params")
+        )
+        return model
     elif model_type == "xgb": # XGBoost
-        params = {**model_config.get("tree_params", {}), **model_config.get("xgb_params", {})}
-        return make_xgboost(params)
+        model = make_xgboost(
+            tree_params=model_config.get("tree_params"),
+            xgb_params=model_config.get("xgb_params")
+        )
+        return model
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
