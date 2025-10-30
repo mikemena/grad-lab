@@ -7,6 +7,15 @@ from datetime import datetime
 from sklearn.metrics import log_loss
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.isotonic import IsotonicRegression
+from sklearn.utils.validation import check_is_fitted
+import packaging.version
+from sklearn import __version__ as sklearn_version
+from sklearn.utils.estimator_checks import check_estimator
+try:
+    from sklearn.calibration import _DeprecatedPrefitCV
+except ImportError:
+    _DeprecatedPrefitCV = None
 from xgboost import XGBClassifier
 from sklearn.model_selection import GridSearchCV
 from ruamel.yaml import YAML
@@ -39,13 +48,33 @@ class TreeModelTrainer:
         # Inside TreeModelTrainer.train(), after model.fit():
         if config["tuning"].get("calibrate", False):
             logger.info("Calibrating probabilities with sigmoid (Platt scaling)...")
-            calibrated = CalibratedClassifierCV(
-                base_estimator=self.model,
-                method='sigmoid',  # or 'isotonic'
-                cv='prefit'
-            )
+
+            sk_ver = packaging.version.parse(sklearn_version)
+
+            # Fit the base model first (already done above)
+            check_is_fitted(self.model)  # Ensure it's fitted
+
+            if sk_ver >= packaging.version.parse("1.6"):
+                # New way: Wrap fitted estimator
+                from sklearn.calibration import FrozenEstimator
+                calibrated = CalibratedClassifierCV(
+                    estimator=FrozenEstimator(self.model),
+                    method='sigmoid',
+                    cv='prefit'  # Still accepted but ignored
+                )
+            else:
+                # Old way: direct prefit
+                calibrated = CalibratedClassifierCV(
+                    estimator=self.model,
+                    method='sigmoid',
+                    cv='prefit'
+                )
+
+            # Fit calibrator on validation set
             calibrated.fit(X_val, y_val)
             self.model = calibrated
+
+            # Use calibrated model for probabilities
             y_train_proba = calibrated.predict_proba(X_train)[:, 1]
             y_val_proba = calibrated.predict_proba(X_val)[:, 1]
         else:
@@ -191,6 +220,24 @@ def main(config_path):
 
         # Train
         training_results = trainer.train(X_train_np, y_train_np, X_val_np, y_val_np, config)
+
+        # === LOG FINAL TREE MODEL PARAMETERS TO MLFLOW ===
+        if hasattr(model, "get_params"):
+            final_params = model.get_params()
+
+            # Filter only tree-relevant params
+            tree_keys = [
+                "n_estimators", "max_depth", "min_samples_split", "min_samples_leaf",
+                "learning_rate", "subsample", "colsample_bytree", "reg_lambda",
+                "criterion", "class_weight"
+            ]
+            tree_params = {k: v for k, v in final_params.items() if k in tree_keys}
+
+            # Log with prefix
+            mlflow.log_params({f"final_{k}": v for k, v in tree_params.items()})
+            logger.info(f"Logged final tree params: {tree_params}")
+        else:
+            logger.warning("Model does not have get_params(); skipping param logging.")
 
         # Log scalar metrics
         mlflow.log_metric("best_val_loss", training_results["best_val_loss"])
