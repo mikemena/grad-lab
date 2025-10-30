@@ -6,6 +6,7 @@ import tempfile
 from datetime import datetime
 from sklearn.metrics import log_loss
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.calibration import CalibratedClassifierCV
 from xgboost import XGBClassifier
 from sklearn.model_selection import GridSearchCV
 from ruamel.yaml import YAML
@@ -34,6 +35,22 @@ class TreeModelTrainer:
 
         # Fit the model (class weights handled via config params in instantiate_model)
         self.model.fit(X_train, y_train)
+
+        # Inside TreeModelTrainer.train(), after model.fit():
+        if config["tuning"].get("calibrate", False):
+            logger.info("Calibrating probabilities with sigmoid (Platt scaling)...")
+            calibrated = CalibratedClassifierCV(
+                base_estimator=self.model,
+                method='sigmoid',  # or 'isotonic'
+                cv='prefit'
+            )
+            calibrated.fit(X_val, y_val)
+            self.model = calibrated
+            y_train_proba = calibrated.predict_proba(X_train)[:, 1]
+            y_val_proba = calibrated.predict_proba(X_val)[:, 1]
+        else:
+            y_train_proba = self.model.predict_proba(X_train)[:, 1]
+            y_val_proba = self.model.predict_proba(X_val)[:, 1]
 
         # Compute proxy losses using log_loss (for consistency with PyTorch metrics)
         y_train_proba = self.model.predict_proba(X_train)[:, 1]
@@ -106,9 +123,14 @@ class TreeModelTrainer:
             # Log best params and score
             best_params = grid_search.best_params_
             best_score = -grid_search.best_score_  # Convert to positive log_loss
-            mlflow.log_params(best_params)
+            mlflow.log_params({f"best_{k}": v for k, v in best_params.items()})
             mlflow.log_metric("best_val_loss", best_score)
-            logger.info(f"Best params: {best_params}, Best val loss: {best_score:.4f}")
+
+            # Also log full grid search results (optional)
+            cv_results = grid_search.cv_results_
+            for i, params in enumerate(cv_results["params"]):
+                mean_score = -cv_results["mean_test_score"][i]  # convert back to log_loss
+                mlflow.log_metric("cv_log_loss", mean_score, step=i)
 
             # Update model and config with best params
             self.model = grid_search.best_estimator_

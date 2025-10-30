@@ -12,7 +12,7 @@
 `python src/train_model.py --config configs/model_v1.yaml`
 
 # Run train model - Tree-Based
-`python src/train_tree_models.py --config configs/model_v1.yaml`
+`python src/train_tree_models.py --config configs/model_tree_v1.yaml`
 
 # Predict with custom input
 

@@ -138,6 +138,15 @@ class ModelEvaluator:
         optimal_threshold, optimal_business_value = (
             business_analyzer.optimize_for_business_value(targets, probabilities)
         )
+        # Re-evaluate at optimal business threshold
+        y_pred_opt = (probabilities >= optimal_threshold).astype(int)
+        opt_metrics = self.comprehensive_evaluation(targets, probabilities, y_pred_opt)
+
+        # Log key business-optimal metrics
+        mlflow.log_metric("business_optimal_recall", opt_metrics["recall"])
+        mlflow.log_metric("business_optimal_precision", opt_metrics["precision"])
+        mlflow.log_metric("business_optimal_f1", opt_metrics["f1"])
+
         metrics.update(business_metrics)
         metrics["optimal_business_threshold"] = optimal_threshold
         metrics["optimal_business_value"] = optimal_business_value
@@ -501,21 +510,38 @@ class BusinessImpactAnalyzer:
             raise
 
     def optimize_for_business_value(self, y_true, y_pred_proba):
-        """Find threshold that maximizes business value."""
-        try:
-            thresholds = np.arange(0.1, 0.9, 0.01)
-            business_values = []
-            for threshold in thresholds:
-                y_pred = (y_pred_proba >= threshold).astype(int)
-                value = self.calculate_business_value(y_true, y_pred)[
-                    "total_business_value"
-                ]
-                business_values.append(value)
-            optimal_idx = np.argmax(business_values)
-            return thresholds[optimal_idx], business_values[optimal_idx]
-        except Exception as e:
-            logger.error(f"Error in business value optimization: {str(e)}")
-            raise
+        """Find threshold that maximizes business value WITHOUT logging on every step."""
+        if self.config_path is None:
+            raise ValueError("config_path must be provided.")
+
+        with open(self.config_path, "r") as f:
+            config = self.yaml.load(f)
+
+        cost_fp = config["inference"]["cost_false_positives"]
+        cost_fn = config["inference"]["cost_false_negatives"]
+        benefit_tp = config["inference"]["benefit_true_positives"]
+
+        thresholds = np.arange(0.01, 0.99, 0.01)  # finer grid
+        business_values = []
+
+        for thresh in thresholds:
+            y_pred = (y_pred_proba >= thresh).astype(int)
+            tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+            value = tp * benefit_tp - fp * cost_fp - fn * cost_fn
+            business_values.append(value)
+
+        best_idx = int(np.argmax(business_values))
+        best_thresh = thresholds[best_idx]
+        best_value = business_values[best_idx]
+
+        # Log ONLY the optimal result
+        mlflow.log_metric("optimal_business_threshold", best_thresh)
+        mlflow.log_metric("optimal_business_value", best_value)
+        mlflow.log_metric("value_per_prediction", best_value / len(y_true))
+
+        logger.info(f"Optimal business threshold: {best_thresh:.4f} → Value: ${best_value:,.0f}")
+
+        return best_thresh, best_value
 
 if __name__ == "__main__":
     logger.info("This module is intended to be imported and used with a trained model.")
