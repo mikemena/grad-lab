@@ -7,11 +7,9 @@ from datetime import datetime
 from sklearn.metrics import log_loss
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.isotonic import IsotonicRegression
 from sklearn.utils.validation import check_is_fitted
 import packaging.version
 from sklearn import __version__ as sklearn_version
-from sklearn.utils.estimator_checks import check_estimator
 try:
     from sklearn.calibration import _DeprecatedPrefitCV
 except ImportError:
