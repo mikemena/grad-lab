@@ -1,5 +1,5 @@
 model: # Model architecture
-  type: rf # basic,improved, logistic, rf, xgb
+  type: logistic # basic,improved, logistic, rf, xgb
   input_dim: 14
   hidden_dims: [64]
   dropout_rate: 0.7
@@ -34,7 +34,7 @@ model: # Model architecture
     eval_metric: "logloss"
 
 training: # Training parameters
-  run_name: paris
+  run_name: heredia
   epochs: 25
   lr: 0.02
   loss_type: bce # 'bce', 'weighted_bce', 'focal'
@@ -50,7 +50,7 @@ training: # Training parameters
   batch_size: 32
 
 tuning: # grid search
-  enabled: true # Set to true to run tuning
+  enabled: false # Set to true to run tuning
   lr_range: [0.0005, 0.001, 0.005, 0.01]
   hidden_dims_options: [[128], [256, 128], [512, 256, 128]]
   dropout_range: [0.2, 0.3, 0.4, 0.5]

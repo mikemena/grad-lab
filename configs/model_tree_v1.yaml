@@ -1,5 +1,5 @@
 model: # Model architecture
-  type: rf # basic,improved, logistic, rf, xgb
+  type: xgb # basic,improved, logistic, rf, xgb
   input_dim: 14
   hidden_dims: [64]
   dropout_rate: 0.7
@@ -50,7 +50,7 @@ training: # Training parameters
   batch_size: 32
 
 tuning: # grid search
-  enabled: true # Set to true to run tuning
+  enabled: false # Set to true to run tuning
   lr_range: [0.0005, 0.001, 0.005, 0.01]
   hidden_dims_options: [[128], [256, 128], [512, 256, 128]]
   dropout_range: [0.2, 0.3, 0.4, 0.5]

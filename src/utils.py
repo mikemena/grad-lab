@@ -68,8 +68,10 @@ def load_dataset(file_path, preprocessor, config):
     # preprocessor.load_state(state_file)
     df = pd.read_excel(file_path)
     target_column = config["data"]["target_column"]
+    logger.debug(f"trget_colun: {target_column}")
     X = df.drop([target_column], axis=1, errors="ignore").values
     y_raw = df[target_column].values
+    logger.debug(f"y_raw: {y_raw}")
     if preprocessor.target_type in ["binary", "categorical"]:
         y = preprocessor.target_label_encoder.transform(y_raw)
     else:
