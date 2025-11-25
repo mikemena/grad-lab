@@ -26,7 +26,23 @@ class DataPreprocessor:
         self.target_type = None  # Store target type (regression, binary, categorical)
         self.excel_output_enabled = True
         self.one_hot_encoder = None  # For categorical and binary columns
+        self.auto_detect_columns = True
         os.makedirs(save_dir, exist_ok=True)
+
+    def auto_detect_columns(self, df, target_column):
+        numerics = df.select_dtypes(include=[np.number]).columns.drop(target_column, errors='ignore').tolist()
+        categoricals = df.select_dtypes(include=['object', 'category']).columns.tolist()
+        binaries = [col for col in categoricals if df[col].nunique() == 2]
+        low_card = [col for col in categoricals if 2 < df[col].nunique() <= 10]
+        high_card = [col for col in categoricals if df[col].nunique() > 10]
+        datetimes = df.select_dtypes(include=['datetime']).columns.tolist()
+        return {
+            'numerical': numerics,
+            'binary': binaries,
+            'low_cardinality_categorical': low_card,
+            'high_cardinality_categorical': high_card,
+            'datetime': datetimes
+        }
 
     def determine_target_type(self, series, unique_count, total_rows):
         """Determine the target column type"""
@@ -200,8 +216,10 @@ class DataPreprocessor:
                     )
         return df
 
-    def scale_features(self, df, fit=True):
+    def scale_features(self, df, fit=True, apply_scaling=True):
         """Scale features using StandardScaler"""
+        if not apply_scaling:
+            return df
         if fit:
             self.scaler = StandardScaler()
             scaled_data = self.scaler.fit_transform(df)
@@ -251,6 +269,18 @@ class DataPreprocessor:
     ):
 
         logger.info(f"🔄 Starting preprocessing pipeline (fit={fit})...")
+
+        if self.preprocessing.get('enable_feature_engineering', False) and fit:
+            # Generic: Auto-bin high-variance numerics
+            for col in numerical_columns:
+                if df[col].std() > 10 * df[col].mean():  # Heuristic for binning
+                    df[f'{col}_bin'] = pd.qcut(df[col], q=4, labels=False, duplicates='drop')
+                    low_cardinality_categorical_columns.append(f'{col}_bin')
+            # Generic family-like: If SibSp/Parch-like cols detected (heuristic: low ints)
+            family_cols = [col for col in numerical_columns if 'sib' in col.lower() or 'parch' in col.lower()]
+            if len(family_cols) >= 2:
+                df['FamilySize'] = df[family_cols[0]] + df[family_cols[1]] + 1
+                numerical_columns.append('FamilySize')
 
         # Separate target if provided
         if target_column and target_column in df.columns:

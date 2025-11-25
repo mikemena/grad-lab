@@ -1,6 +1,6 @@
 model: # Model architecture
-  type: xgb # basic,improved, logistic, rf, xgb
-  input_dim: 14
+  type: xgb # nn_basic,nn_improved, logistic, rf, xgb
+  input_dim: auto # Detect dynamically
   hidden_dims: [64]
   dropout_rate: 0.7
   activation: relu # relu, gelu, leaky_relu, swish
@@ -44,6 +44,7 @@ training: # Training parameters
   weight_decay: 0.001
   patience: 10
   min_delta: 0.0001
+  use_scaling: false # Set false for trees in code if needed
   use_class_weights: false
   use_scheduler: false
   scheduler_type: cosine # If true
@@ -67,6 +68,7 @@ tuning: # grid search
 
 preprocessing:
   save_dir: experiments/preprocessing/artifacts
+  enable_feature_engineering: true # Generic only (e.g., auto-bin)
 
 inference:
   cost_false_positives: 10

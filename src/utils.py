@@ -48,9 +48,9 @@ def instantiate_model(model_config, input_dim):
     if "type" in model_params:
         del model_params["type"]
 
-    if model_type == "basic":
+    if model_type == "nn_basic":
         return Predictor(input_dim=input_dim, **model_params)
-    elif model_type == "improved":
+    elif model_type == "nn_improved":
         return ImprovedPredictor(input_dim=input_dim, **model_params)
     elif model_type == "logistic":
         return LogisticRegression(input_dim=input_dim, **model_params)

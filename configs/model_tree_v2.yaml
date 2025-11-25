@@ -1,5 +1,5 @@
 model: # Model architecture
-  type: logistic # basic,improved, logistic, rf, xgb
+  type: rf # basic,improved, logistic, rf, xgb
   input_dim: 14
   hidden_dims: [64]
   dropout_rate: 0.7
@@ -77,7 +77,7 @@ inference:
 data:
   filepath:
     state: experiments/preprocessing/artifacts/preprocessor_state.json
-    train: experiments/preprocessing/artifacts/bank_loans_train_processed.xlsx
-    val: experiments/preprocessing/artifacts/bank_loans_val_processed.xlsx
-    test: experiments/preprocessing/artifacts/bank_loans_test_processed.xlsx
-  target_column: personal_loan
+    train: experiments/preprocessing/artifacts/titanic_train_processed.xlsx
+    val: experiments/preprocessing/artifacts/titanic_val_processed.xlsx
+    test: experiments/preprocessing/artifacts/titanic_test_processed.xlsx
+  target_column: Survived
