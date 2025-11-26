@@ -68,6 +68,7 @@ tuning: # grid search
 
 preprocessing:
   save_dir: experiments/preprocessing/artifacts
+  apply_scaling: false
   enable_feature_engineering: true # Generic only (e.g., auto-bin)
 
 inference:

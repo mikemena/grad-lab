@@ -30,6 +30,7 @@ tuning: # grid search
   dropout_range: [0.2, 0.3, 0.4, 0.5]
 
 preprocessing:
+  apply_scaling: true # Set to false for tree models
   save_dir: experiments/preprocessing/artifacts
 
 inference:

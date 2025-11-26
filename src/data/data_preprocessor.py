@@ -27,6 +27,7 @@ class DataPreprocessor:
         self.excel_output_enabled = True
         self.one_hot_encoder = None  # For categorical and binary columns
         self.auto_detect_columns = True
+        self.apply_scaling = True # To skip scaling for tree-based models
         os.makedirs(save_dir, exist_ok=True)
 
     def auto_detect_columns(self, df, target_column):
@@ -266,6 +267,7 @@ class DataPreprocessor:
         binary_columns=None,
         datetime_columns=None,
         fit=True,
+        apply_scaling=True
     ):
 
         logger.info(f"🔄 Starting preprocessing pipeline (fit={fit})...")
@@ -405,23 +407,22 @@ class DataPreprocessor:
         features_to_process = self.align_features(features_df, fit=fit)
 
         # Step 6: Scale features
-        logger.info("📊 Scaling features...")
-        features_to_process = self.scale_features(features_to_process, fit=fit)
+        if apply_scaling:
+            logger.info("📊 Scaling features...")
+            features_to_process = self.scale_features(features_to_process, fit=fit)
 
-        features_df = features_to_process
-        logger.info(
-            f"Scaler n_samples_seen_: {self.scaler.n_samples_seen_ if self.scaler else 'N/A'}"
-        )
+            features_df = features_to_process
+            logger.info(f"Scaler n_samples_seen_: {self.scaler.n_samples_seen_ if self.scaler else 'N/A'}")
 
-        logger.info(f"✓ Preprocessing complete: {original_shape} → {features_df.shape}")
+            logger.info(f"✓ Preprocessing complete: {original_shape} → {features_df.shape}")
 
-        # Debug: Check for NaNs after scaling
-        if features_df.isna().any().any():
-            logger.warning("NaNs detected after scaling")
-            logger.info(features_df.isna().sum())
-            features_df.to_excel(
-                os.path.join(self.save_dir, "after_scaling_debug.xlsx"), index=False
-            )
+            # Debug: Check for NaNs after scaling
+            if features_df.isna().any().any():
+                logger.warning("NaNs detected after scaling")
+                logger.info(features_df.isna().sum())
+                features_df.to_excel(os.path.join(self.save_dir, "after_scaling_debug.xlsx"), index=False)
+        else:
+            logger.info("⏭️ Skipping scaling (tree-based model")
 
         # Step 7: Save to Excel if enabled
         if self.excel_output_enabled:
