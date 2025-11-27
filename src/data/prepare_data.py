@@ -19,10 +19,14 @@ def prepare_training_data(config):
     save_dir = config.get("preprocessing", {}).get(
         "save_dir", "preprocessing_artifacts"
     )
-    config = config
-    logger.debug(f"Config: {config}")
 
+    # Extract apply_scaling from config (default True for backward compatibility)
+    apply_scaling = config.get("preprocessing", {}).get("apply_scaling", True)
+    logger.info(f"Scaling enabled: {apply_scaling}")
+
+    logger.debug(f"Config: {config}")
     logger.debug(f"save_dir from config: {save_dir}")
+
     pipeline = DataPipeline(save_dir=save_dir, config=config)
 
     X_train, X_val, X_test, y_train, y_val, y_test, train_df, val_df, test_df = (
@@ -35,10 +39,11 @@ def prepare_training_data(config):
             random_state=config["random_state"],
             apply_smote=config["imbalance"]["apply_smote"],
             imbalance_threshold=config["imbalance"]["threshold"],
+            apply_scaling=apply_scaling,  # Pass scaling flag
         )
     )
     logger.info(
-        f"With SMOTE - Training class distribution: {pd.Series(y_train.numpy()).value_counts(normalize=True)}"
+        f"Training class distribution: {pd.Series(y_train.numpy()).value_counts(normalize=True).to_dict()}"
     )
     logger.info("\nData preparation complete!")
     logger.info(f"Training set: {X_train.shape}")
@@ -47,6 +52,7 @@ def prepare_training_data(config):
 
     # Save processed tensors if configured
     if config.get("output", {}).get("save_processed_data", True):
+        tensor_path = os.path.join(save_dir, "processed_data.pt")
         torch.save(
             {
                 "X_train": X_train,
@@ -55,19 +61,19 @@ def prepare_training_data(config):
                 "y_train": y_train,
                 "y_val": y_val,
                 "y_test": y_test,
+                "apply_scaling": apply_scaling,  # Save scaling info for reference
             },
-            os.path.join(save_dir, "processed_data.pt"),
+            tensor_path,
         )
-        logger.info(
-            f"✅ Processed tensors saved to '{os.path.join(save_dir, 'processed_data.pt')}'"
-        )
+        logger.info(f"✅ Processed tensors saved to '{tensor_path}'")
+
     # Save debug splits if configured
     if config.get("output", {}).get("debug_splits", True):
-        logger.info("\n🔍 Saving raw dataframes for debugging...")
+        logger.info("\n📁 Saving raw dataframes for debugging...")
         debug_dir = config["output"]["debug_splits_dir"]
 
         # Create debug directory if it doesn't exist
-        # os.makedirs(debug_dir, exist_ok=True)
+        os.makedirs(debug_dir, exist_ok=True)
 
         train_df.to_excel(os.path.join(debug_dir, "raw_train_split.xlsx"), index=False)
         val_df.to_excel(os.path.join(debug_dir, "raw_val_split.xlsx"), index=False)
@@ -91,7 +97,6 @@ def prepare_training_data(config):
 
 def create_split_summary(train_df, val_df, test_df, debug_dir, target_column):
     """Create a summary Excel file for quick split analysis"""
-    # Calculate total rows for percentage calculation
     total_rows = len(train_df) + len(val_df) + len(test_df)
 
     summary_data = []
@@ -132,16 +137,15 @@ def create_split_summary(train_df, val_df, test_df, debug_dir, target_column):
     for _, row in summary_df.iterrows():
         logger.info(f"{row['Split']}: {row['Count']} samples ({row['Percentage']})")
         if "Target_Mean" in row:
-            logger.info(f"Target avg: {row['Target_Mean']}, std: {row['Target_Std']}")
-        else:
-            logger.info(f"Target distribution: {row['Target_Distribution']}")
+            logger.info(f"   Target avg: {row['Target_Mean']}, std: {row['Target_Std']}")
+        elif "Target_Distribution" in row:
+            logger.info(f"   Target distribution: {row['Target_Distribution']}")
 
 
 def debug_splits(config):
     """Function to help debug splitting issues after training"""
     logger.info("🔍 DEBUGGING SPLIT INTEGRITY...")
 
-    # Get debug directory from config
     debug_dir = config.get("output", {}).get("debug_splits_dir", "debug_splits")
     logger.debug(f"debug_dir from config: {debug_dir}")
     target_column = config["target_column"]
@@ -153,7 +157,7 @@ def debug_splits(config):
 
         logger.info("✅ Raw split files loaded successfully")
 
-        # Use hashes as unique identifiers to prevent data leakage detection
+        # Use hashes as unique identifiers to detect data leakage
         def hash_rows(df):
             return set(
                 df.astype(str).apply(
@@ -180,9 +184,9 @@ def debug_splits(config):
             )
 
         if overlaps:
-            logger.info("❌ DATA LEAKAGE DETECTED:")
+            logger.warning("❌ DATA LEAKAGE DETECTED:")
             for msg in overlaps:
-                logger.info(f"{msg}")
+                logger.warning(f"   {msg}")
         else:
             logger.info("✅ No data leakage detected")
 
@@ -197,7 +201,6 @@ def debug_splits(config):
             logger.info(
                 f"Test {target_column} range: {test_df[target_column].min()}-{test_df[target_column].max()}"
             )
-
         else:
             for split_name, df in [
                 ("Train", train_df),
@@ -205,9 +208,8 @@ def debug_splits(config):
                 ("Test", test_df),
             ]:
                 value_counts = df[target_column].value_counts(normalize=True)
-                logger.info(
-                    f"{split_name} {target_column} distribution: {', '.join([f'{k}: {v:.2%}' for k, v in value_counts.items()])}"
-                )
+                dist_str = ", ".join([f"{k}: {v:.2%}" for k, v in value_counts.items()])
+                logger.info(f"{split_name} {target_column} distribution: {dist_str}")
 
     except FileNotFoundError:
         logger.error("❌ Debug files not found. Run prepare_training_data() first.")
@@ -229,8 +231,21 @@ def main():
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
 
-    # Pass config to the function
+    # Log key settings
+    apply_scaling = config.get("preprocessing", {}).get("apply_scaling", True)
+    logger.info("=" * 50)
+    logger.info("DATA PREPARATION PIPELINE")
+    logger.info("=" * 50)
+    logger.info(f"Config file: {args.config}")
+    logger.info(f"Target column: {config['target_column']}")
+    logger.info(f"Apply scaling: {apply_scaling}")
+    if not apply_scaling:
+        logger.info("⚠️  Scaling disabled - suitable for tree-based models")
+    logger.info("=" * 50)
+
+    # Run preparation
     prepare_training_data(config)
+
     logger.info("\n" + "=" * 50)
     debug_splits(config)
 

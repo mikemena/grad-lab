@@ -27,7 +27,8 @@ class DataPreprocessor:
         self.excel_output_enabled = True
         self.one_hot_encoder = None  # For categorical and binary columns
         self.auto_detect_columns = True
-        self.apply_scaling = True # To skip scaling for tree-based models
+        self.scaling_applied = False  # Track whether scaling was applied
+        self.preprocessing = {}  # Store preprocessing config
         os.makedirs(save_dir, exist_ok=True)
 
     def auto_detect_columns(self, df, target_column):
@@ -146,7 +147,6 @@ class DataPreprocessor:
                 .apply(lambda x: (x.sum() + alpha * global_mean) / (x.count() + alpha))
                 .to_dict()
             )
-            # logger.info(f"Target encoding mapping: {mapping}")
             self.target_encoding_mappings[feature_column] = {
                 "mapping": mapping,
                 "global_mean": float(global_mean),
@@ -191,9 +191,9 @@ class DataPreprocessor:
                 continue
             elif perc > 20:
                 if col in categorical_columns:
-                    df[col] = df[col].fillna("Unknown")  # Or consdier dropping
+                    df[col] = df[col].fillna("Unknown")
                 elif col in numerical_columns:
-                    df[col] = df[col].fillna(df[col].median())  # Conservative fill
+                    df[col] = df[col].fillna(df[col].median())
                 continue
 
             # For < 20%, use imputation
@@ -220,7 +220,16 @@ class DataPreprocessor:
     def scale_features(self, df, fit=True, apply_scaling=True):
         """Scale features using StandardScaler"""
         if not apply_scaling:
+            logger.info("⏭️  Skipping scaling (disabled for tree-based models)")
+            self.scaling_applied = False
+            # Still need to initialize scaler for state saving
+            if fit and self.scaler is None:
+                self.scaler = StandardScaler()
+                # Fit but don't transform - just to have valid state
+                self.scaler.fit(df)
             return df
+
+        self.scaling_applied = True
         if fit:
             self.scaler = StandardScaler()
             scaled_data = self.scaler.fit_transform(df)
@@ -252,7 +261,7 @@ class DataPreprocessor:
                 )
             missing_cols = set(self.feature_columns) - set(df.columns)
             for col in missing_cols:
-                df[col] = 0  # Or np.nan, depending on column type
+                df[col] = 0
             df = df[self.feature_columns]  # Reorder to match training
         return df
 
@@ -267,18 +276,17 @@ class DataPreprocessor:
         binary_columns=None,
         datetime_columns=None,
         fit=True,
-        apply_scaling=True
+        apply_scaling=True,
     ):
-
-        logger.info(f"🔄 Starting preprocessing pipeline (fit={fit})...")
+        logger.info(f"🔄 Starting preprocessing pipeline (fit={fit}, scaling={apply_scaling})...")
 
         if self.preprocessing.get('enable_feature_engineering', False) and fit:
             # Generic: Auto-bin high-variance numerics
             for col in numerical_columns:
-                if df[col].std() > 10 * df[col].mean():  # Heuristic for binning
+                if df[col].std() > 10 * df[col].mean():
                     df[f'{col}_bin'] = pd.qcut(df[col], q=4, labels=False, duplicates='drop')
                     low_cardinality_categorical_columns.append(f'{col}_bin')
-            # Generic family-like: If SibSp/Parch-like cols detected (heuristic: low ints)
+            # Generic family-like: If SibSp/Parch-like cols detected
             family_cols = [col for col in numerical_columns if 'sib' in col.lower() or 'parch' in col.lower()]
             if len(family_cols) >= 2:
                 df['FamilySize'] = df[family_cols[0]] + df[family_cols[1]] + 1
@@ -319,9 +327,7 @@ class DataPreprocessor:
                     index=target_data.index,
                 )
             else:
-                target_data_encoded = (
-                    target_data  # Regression target, no encoding needed
-                )
+                target_data_encoded = target_data
 
             if target_data_encoded.isna().any():
                 logger.error(
@@ -368,15 +374,12 @@ class DataPreprocessor:
             logger.info("Processing high cardinality categorical columns...")
             for col in high_cardinality_categorical_columns:
                 if col in features_df.columns:
-                    # logger.info(f"Before target encoding for {col}:")
-                    # logger.info(features_df.head())
                     features_df = self.target_encode(
                         features_df,
                         col,
                         target_data=target_data_encoded if fit else None,
                         fit=fit,
                     )
-                    # logger.info(f"After target encoding for {col}:")
                     if features_df[f"{col}_encoded"].isna().any():
                         logger.warning(f"NaNs detected in {col}_encoded")
                         features_df.to_excel(
@@ -400,29 +403,28 @@ class DataPreprocessor:
             )
             logger.info("Saved pre-scaling DataFrame to before_scaling_debug.xlsx")
 
-        # Step 5: Align features and scale
+        # Step 5: Align features
         logger.info("🔄 Aligning features...")
-        # columns_to_process = [col for col in features_df.columns if col != "temp_index"]
-        # features_to_process = features_df[columns_to_process]
         features_to_process = self.align_features(features_df, fit=fit)
 
-        # Step 6: Scale features
-        if apply_scaling:
-            logger.info("📊 Scaling features...")
-            features_to_process = self.scale_features(features_to_process, fit=fit)
+        # Step 6: Scale features (conditionally)
+        logger.info("📊 Processing features (scaling={})...".format(apply_scaling))
+        features_to_process = self.scale_features(features_to_process, fit=fit, apply_scaling=apply_scaling)
 
-            features_df = features_to_process
-            logger.info(f"Scaler n_samples_seen_: {self.scaler.n_samples_seen_ if self.scaler else 'N/A'}")
+        features_df = features_to_process
+        logger.info(
+            f"Scaler n_samples_seen_: {self.scaler.n_samples_seen_ if self.scaler else 'N/A'}"
+        )
 
-            logger.info(f"✓ Preprocessing complete: {original_shape} → {features_df.shape}")
+        logger.info(f"✓ Preprocessing complete: {original_shape} → {features_df.shape}")
 
-            # Debug: Check for NaNs after scaling
-            if features_df.isna().any().any():
-                logger.warning("NaNs detected after scaling")
-                logger.info(features_df.isna().sum())
-                features_df.to_excel(os.path.join(self.save_dir, "after_scaling_debug.xlsx"), index=False)
-        else:
-            logger.info("⏭️ Skipping scaling (tree-based model")
+        # Debug: Check for NaNs after scaling
+        if features_df.isna().any().any():
+            logger.warning("NaNs detected after scaling")
+            logger.info(features_df.isna().sum())
+            features_df.to_excel(
+                os.path.join(self.save_dir, "after_scaling_debug.xlsx"), index=False
+            )
 
         # Step 7: Save to Excel if enabled
         if self.excel_output_enabled:
@@ -433,7 +435,7 @@ class DataPreprocessor:
         # Step 8: Save preprocessing state if fitting
         if fit:
             logger.info("💾 Saving preprocessing state...")
-            self.save_state()
+            self.save_state(apply_scaling=apply_scaling)
             logger.info(
                 f"✓ State saved to {os.path.join(self.save_dir, 'preprocessor_state.json')}"
             )
@@ -453,9 +455,7 @@ class DataPreprocessor:
         # Combine features and target for Excel output
         if target_data is not None:
             excel_df = features_df.copy()
-            excel_df[target_column] = (
-                target_data.values
-            )  # Use original target_data (not encoded)
+            excel_df[target_column] = target_data.values
             logger.info("📄 Saving processed data with target to Excel...")
         else:
             excel_df = features_df.copy()
@@ -475,7 +475,7 @@ class DataPreprocessor:
         self.excel_output_enabled = enabled
         logger.info(f"Excel output {'enabled' if enabled else 'disabled'}")
 
-    def save_state(self):
+    def save_state(self, apply_scaling=True):
         """Save preprocessing state as JSON"""
         if self.scaler is None:
             logger.error("Scaler not fitted. Cannot save state.")
@@ -521,6 +521,7 @@ class DataPreprocessor:
         # Prepare state dictionary
         state = {
             "scaler_params": scaler_params,
+            "scaling_applied": apply_scaling,  # Track whether scaling was actually used
             "feature_columns": (
                 self.feature_columns if self.feature_columns is not None else []
             ),
@@ -542,12 +543,14 @@ class DataPreprocessor:
         with open(state_file, "w") as f:
             json.dump(state, f, indent=2)
         logger.info(f"State saved to {state_file}")
+        logger.info(f"Scaling applied: {apply_scaling}")
 
     def load_state(self, state_file=None):
         logger.debug(f"load_state called with state_file: {state_file}")
-        state_file = state_file or self.state_file
-        """Load preprocessing state from JSON"""
-        # Use state_file as-is if it’s an absolute path or starts with project root
+        if state_file is None:
+            state_file = os.path.join(self.save_dir, "preprocessor_state.json")
+
+        # Use state_file as-is if it's an absolute path or starts with project root
         if os.path.isabs(state_file) or state_file.startswith("experiments/"):
             file_path = state_file
         else:
@@ -565,6 +568,7 @@ class DataPreprocessor:
             self.scaler.var_ = np.array(scaler_params["var_"])
             self.scaler.n_samples_seen_ = scaler_params["n_samples_seen_"]
 
+        self.scaling_applied = state.get("scaling_applied", True)  # Default True for backward compatibility
         self.feature_columns = state["feature_columns"]
         self.column_mappings = state["column_mappings"]
         self.target_encoding_mappings = state.get("target_encoding_mappings", {})
@@ -583,7 +587,7 @@ class DataPreprocessor:
             self.one_hot_encoder = OneHotEncoder(
                 sparse_output=False,
                 handle_unknown="ignore",
-                dtype=np.int32,  # type: ignore
+                dtype=np.int32,
             )
             self.one_hot_encoder.categories_ = [
                 np.array(cats) for cats in one_hot_encoder_params["categories_"]
@@ -591,10 +595,10 @@ class DataPreprocessor:
             self.one_hot_encoder.n_features_in_ = one_hot_encoder_params[
                 "n_features_in_"
             ]
-            # Set drop_idx_ to None to avoid issues with partial state
             self.one_hot_encoder.drop_idx_ = None
 
         logger.info(f"✅ Loaded preprocessing state from {state_file}")
+        logger.info(f"Scaling was applied: {self.scaling_applied}")
         logger.info(f"Numerical columns: {self.numerical_columns}")
         logger.info(f"Categorical columns: {self.categorical_columns}")
         logger.info(f"Features: {len(self.feature_columns)}")
@@ -606,7 +610,7 @@ class DataPreprocessor:
         )
 
     def process_training_data(
-        self, df, target_column, column_config, excel_filename=None
+        self, df, target_column, column_config, excel_filename=None, apply_scaling=True
     ):
         """Convenience method for processing training data"""
         self.numerical_columns = column_config.get("numerical", [])
@@ -615,7 +619,7 @@ class DataPreprocessor:
             + column_config.get("high_cardinality_categorical", [])
             + column_config.get("binary", [])
         )
-        logger.info("🎯 Processing training data...")
+        logger.info(f"🎯 Processing training data (scaling={apply_scaling})...")
         return self.process_and_save(
             df=df,
             target_column=target_column,
@@ -630,19 +634,22 @@ class DataPreprocessor:
             binary_columns=column_config.get("binary", []),
             datetime_columns=column_config.get("datetime", []),
             fit=True,
+            apply_scaling=apply_scaling,
         )
 
-    def process_inference_data(self, df, excel_filename=None):
+    def process_inference_data(self, df, excel_filename=None, apply_scaling=None):
         """Convenience method for processing inference data"""
-        logger.info("Processing inference data...")
+        # Use the scaling setting from when the model was trained
+        if apply_scaling is None:
+            apply_scaling = self.scaling_applied
+        logger.info(f"Processing inference data (scaling={apply_scaling})...")
         return self.process_and_save(
             df=df,
             target_column=None,
             excel_filename=excel_filename or "inference_processed.xlsx",
             fit=False,
+            apply_scaling=apply_scaling,
         )
-
-    # Current preprocessor scale features for the NN, but For tree models, no need to scale
 
     def transform_for_nn(self, df, target_column):
         """Existing behavior (scaled numeric tensors for NN)."""

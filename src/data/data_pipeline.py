@@ -19,6 +19,7 @@ class DataPipeline:
         self.column_config = None
         self.save_dir = save_dir
         self.config = config
+        self.apply_scaling = True  # Default to True for backward compatibility
         if config is not None:
             self._validate_config()
         logger.debug(f"Entire config: {self.config}")
@@ -61,6 +62,11 @@ class DataPipeline:
             "debug_splits_dir", "debug_splits"
         )
 
+        # Extract preprocessing settings
+        preprocessing_config = self.config.get("preprocessing", {})
+        self.apply_scaling = preprocessing_config.get("apply_scaling", True)
+        logger.info(f"Scaling will be {'applied' if self.apply_scaling else 'skipped'}")
+
         # Derive base_filename from file_path if not provided
         if "base_filename" not in self.config:
             self.config["base_filename"] = os.path.splitext(
@@ -96,6 +102,7 @@ class DataPipeline:
         random_state=42,
         apply_smote=None,
         imbalance_threshold=None,
+        apply_scaling=None,
     ):
         # Use config values if parameters are not provided
         file_path = file_path or self.config.get("file_path")
@@ -113,11 +120,21 @@ class DataPipeline:
             if imbalance_threshold is not None
             else self.imbalance.get("threshold")
         )
+        # Use instance default if not explicitly provided
+        apply_scaling = (
+            apply_scaling
+            if apply_scaling is not None
+            else self.apply_scaling
+        )
 
         logger.info("=" * 70)
         logger.info("SPLIT EXCEL DATA PIPELINE - MAXIMUM TRANSPARENCY")
         logger.info("=" * 70)
         logger.info(f"Target column: {target_column}")
+        logger.info(f"Apply scaling: {apply_scaling}")
+        if not apply_scaling:
+            logger.info("⚠️  Scaling disabled - data suitable for tree-based models")
+
         logger.info("\n1. ANALYZING DATASET STRUCTURE...")
         analysis = analyze_dataset(file_path)
         logger.info(f"✓ Raw data shape: {analysis['shape']}")
@@ -178,23 +195,23 @@ class DataPipeline:
             target_column=target_column,
             column_config=self.column_config,
             excel_filename=train_excel,
+            apply_scaling=apply_scaling,
         )
         y_train = train_df[target_column].values
 
         logger.info("🔄 Processing validation split...")
         val_excel = f"{base_filename}_val_processed.xlsx"
         X_val_processed = self._process_split_with_target(
-            val_df, target_column, val_excel, fit=False
+            val_df, target_column, val_excel, fit=False, apply_scaling=apply_scaling
         )
         y_val = val_df[target_column].values
 
         logger.info("🔄 Processing test split...")
         test_excel = f"{base_filename}_test_processed.xlsx"
         X_test_processed = self._process_split_with_target(
-            test_df, target_column, test_excel, fit=False
+            test_df, target_column, test_excel, fit=False, apply_scaling=apply_scaling
         )
         y_test = test_df[target_column].values
-
 
         # Apply SMOTE if imbalance detected
         logger.debug(f"apply_smote: {apply_smote}")
@@ -230,11 +247,12 @@ class DataPipeline:
         logger.info(f"✓ Training tensors: {X_train.shape}")
         logger.info(f"✓ Validation tensors: {X_val.shape}")
         logger.info(f"✓ Test tensors: {X_test.shape}")
-        logger.info("\n8. PIPELINE SUMMARY")
+        logger.info("\n7. PIPELINE SUMMARY")
         logger.info("📁 Generated Files:")
         logger.info(f"📄 {train_excel}")
         logger.info(f"📄 {val_excel}")
         logger.info(f"📄 {test_excel}")
+        logger.info(f"Scaling applied: {apply_scaling}")
 
         return X_train, X_val, X_test, y_train, y_val, y_test, train_df, val_df, test_df
 
@@ -293,6 +311,7 @@ class DataPipeline:
         stratify = (
             df[target_column]
             if not pd.api.types.is_numeric_dtype(df[target_column])
+            or df[target_column].nunique() <= 10  # Also stratify for binary/multiclass
             else None
         )
         train_val_df, test_df = train_test_split(
@@ -309,7 +328,7 @@ class DataPipeline:
         test_df = test_df.reset_index(drop=True)
         return train_df, val_df, test_df
 
-    def _process_split_with_target(self, df, target_column, excel_filename, fit=False):
+    def _process_split_with_target(self, df, target_column, excel_filename, fit=False, apply_scaling=True):
         self.preprocessor.enable_excel_output(False)
         X = df.drop(target_column, axis=1)
         if self.column_config is None:
@@ -328,6 +347,7 @@ class DataPipeline:
             binary_columns=self.column_config.get("binary", []),
             datetime_columns=self.column_config.get("datetime", []),
             fit=fit,
+            apply_scaling=apply_scaling,
         )
         self.preprocessor.enable_excel_output(True)
         full_df = X_processed.copy()
@@ -360,5 +380,5 @@ class DataPipeline:
                 config["numerical"].append(col)
             else:
                 config["text"].append(col)
-        logger.info("Config:", config)
+        logger.info(f"Column config: {config}")
         return config

@@ -10,7 +10,7 @@ imbalance:
   threshold: 0.3
 preprocessing:
   save_dir: "experiments/preprocessing/artifacts"
-  apply_scaling: true # Set to false for tree models
+  apply_scaling: false # Set to false for tree models
 output:
   save_processed_data: true
   debug_splits: true
