@@ -8,13 +8,15 @@ from logger import setup_logger
 from data.data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from models.predictor import FocalLoss
-from utils import instantiate_model, load_dataset, _flatten_dict
+from utils import instantiate_model, load_dataset, _flatten_dict, filter_numeric_metrics
+from feature_importance import get_feature_importance
 import numpy as np
 from datetime import datetime
 import json
 from evaluate import ModelEvaluator
 from sklearn.utils.class_weight import compute_class_weight
 import time
+import tempfile
 import mlflow
 
 logger = setup_logger(__name__, include_location=True)
@@ -32,6 +34,7 @@ class ModelTrainer:
         self.model.to(self.device)
         self.train_losses = []
         self.val_losses = []
+
         # Handle loss based on config
         loss_type = config["training"]["loss_type"]
         if loss_type == "focal":
@@ -42,6 +45,7 @@ class ModelTrainer:
             self.criterion = nn.BCEWithLogitsLoss(reduction="none")
         else:
             self.criterion = nn.BCEWithLogitsLoss()
+
         # Class weights if enabled (to be set later with actual data)
         self.class_weights = None
 
@@ -103,6 +107,20 @@ class ModelTrainer:
         else:
             raise ValueError(f"Unsupported optimizer: {optimizer_name}")
 
+        # Learning rate scheduler
+        scheduler = None
+        if kwargs.get("use_scheduler", False):
+            scheduler_type = kwargs.get("scheduler_type", "cosine")
+            if scheduler_type == "cosine":
+                scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+            elif scheduler_type == "step":
+                scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+            elif scheduler_type == "plateau":
+                scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                    optimizer, mode='min', factor=0.5, patience=5
+                )
+            logger.info(f"Using {scheduler_type} learning rate scheduler")
+
         best_val_loss = float("inf")
         patience_counter = 0
 
@@ -111,6 +129,14 @@ class ModelTrainer:
             val_loss = self.validate(val_loader, self.criterion)
             self.train_losses.append(train_loss)
             self.val_losses.append(val_loss)
+
+            # Step scheduler
+            if scheduler is not None:
+                if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                    scheduler.step(val_loss)
+                else:
+                    scheduler.step()
+
             # Early stopping logic
             if val_loss < best_val_loss - min_delta:
                 best_val_loss = val_loss
@@ -119,41 +145,59 @@ class ModelTrainer:
                 torch.save({"model_state_dict": self.model.state_dict()}, save_path)
             else:
                 patience_counter += 1
+
             if (epoch + 1) % 10 == 0:
+                current_lr = optimizer.param_groups[0]['lr']
                 logger.info(
-                    f"Epoch [{epoch+1}/{epochs}] - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
+                    f"Epoch [{epoch+1}/{epochs}] - Train Loss: {train_loss:.4f}, "
+                    f"Val Loss: {val_loss:.4f}, LR: {current_lr:.6f}"
                 )
+
             mlflow.log_metric("train_loss", train_loss, step=epoch)
             mlflow.log_metric("val_loss", val_loss, step=epoch)
+            mlflow.log_metric("learning_rate", optimizer.param_groups[0]['lr'], step=epoch)
 
             if patience_counter >= patience:
                 logger.info(f"Early stopping at epoch {epoch+1}")
                 break
 
+        # Load best model
         self.model.load_state_dict(torch.load(save_path)["model_state_dict"])
+        logger.info(f"Loaded best model from {save_path}")
+
         return {
             "best_val_loss": best_val_loss,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
+            "epochs_trained": len(self.train_losses),
         }
 
     def hypertune(self, train_loader, val_loader, input_dim, config):
-        if not self.config["tuning"]["enabled"]:
-            return
+        """Hyperparameter tuning via grid search."""
+        if not self.config["tuning"].get("enabled", False):
+            logger.info("Tuning disabled in config; skipping.")
+            return None
+
+        logger.info("Starting hyperparameter tuning...")
         best_val_loss = float("inf")
         best_params = {}
+
         for lr in self.config["tuning"]["lr_range"]:
-            with mlflow.start_run(nested=True, run_name=f"trial_lr_{lr}"):  # Nested child run
+            with mlflow.start_run(nested=True, run_name=f"trial_lr_{lr}"):
                 mlflow.log_param("lr", lr)
+
                 if self.config["model"]["type"] == "logistic":
                     logger.info(f"Tuning: lr={lr} (logistic regression)")
                     temp_config = self.config.copy()
                     temp_model = instantiate_model(temp_config["model"], input_dim)
-                    temp_trainer = ModelTrainer(temp_model, temp_config)
+                    temp_trainer = ModelTrainer(temp_model, temp_config, self.device)
                     results = temp_trainer.train(
-                        train_loader, val_loader, lr=lr, config=config
+                        train_loader, val_loader, config, lr=lr,
+                        epochs=self.config["training"]["epochs"],
+                        patience=self.config["training"]["patience"]
                     )
                     mlflow.log_metric("val_loss", results["best_val_loss"])
+
                     if results["best_val_loss"] < best_val_loss:
                         best_val_loss = results["best_val_loss"]
                         best_params = {"lr": lr}
@@ -161,16 +205,20 @@ class ModelTrainer:
                     for hidden_dims in self.config["tuning"]["hidden_dims_options"]:
                         for dropout in self.config["tuning"]["dropout_range"]:
                             logger.info(
-                            f"Tuning: lr={lr}, hidden_dims={hidden_dims}, dropout={dropout}"
+                                f"Tuning: lr={lr}, hidden_dims={hidden_dims}, dropout={dropout}"
                             )
                             temp_config = self.config.copy()
                             temp_config["model"]["hidden_dims"] = hidden_dims
                             temp_config["model"]["dropout_rate"] = dropout
                             temp_model = instantiate_model(temp_config["model"], input_dim)
-                            temp_trainer = ModelTrainer(temp_model, temp_config)
+                            temp_trainer = ModelTrainer(temp_model, temp_config, self.device)
                             results = temp_trainer.train(
-                                train_loader, val_loader, lr=lr, config=config
+                                train_loader, val_loader, config, lr=lr,
+                                epochs=self.config["training"]["epochs"],
+                                patience=self.config["training"]["patience"]
                             )
+                            mlflow.log_metric("val_loss", results["best_val_loss"])
+
                             if results["best_val_loss"] < best_val_loss:
                                 best_val_loss = results["best_val_loss"]
                                 best_params = {
@@ -178,13 +226,22 @@ class ModelTrainer:
                                     "hidden_dims": hidden_dims,
                                     "dropout": dropout,
                                 }
-                                logger.info(f"Best tuned params: {best_params}")
+                                logger.info(f"New best params: {best_params}")
+
         if best_params:
+            logger.info(f"✓ Best tuned params: {best_params}")
             self.config["training"]["lr"] = best_params["lr"]
             if self.config["model"]["type"] != "logistic":
-                self.config["model"]["hidden_dims"] = best_params["hidden_dims"]
-                self.config["model"]["dropout_rate"] = best_params["dropout"]
+                self.config["model"]["hidden_dims"] = best_params.get(
+                    "hidden_dims", self.config["model"]["hidden_dims"]
+                )
+                self.config["model"]["dropout_rate"] = best_params.get(
+                    "dropout", self.config["model"]["dropout_rate"]
+                )
             self.model = instantiate_model(self.config["model"], input_dim)
+            self.model.to(self.device)
+
+        return best_params
 
 
 def create_data_loaders(
@@ -194,18 +251,23 @@ def create_data_loaders(
     train_dataset = TensorDataset(X_train, y_train)
     val_dataset = TensorDataset(X_val, y_val)
     test_dataset = TensorDataset(X_test, y_test)
+
     if use_sampler:
-        sample_weights = np.ones(len(y_train))  # Placeholder, adjust based on imbalance
+        # Calculate sample weights for imbalanced data
+        class_counts = torch.bincount(y_train.long())
+        class_weights = 1.0 / class_counts.float()
+        sample_weights = class_weights[y_train.long()]
         sampler = WeightedRandomSampler(
             sample_weights, num_samples=len(sample_weights), replacement=True
         )
         train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler)
     else:
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    return train_loader, val_loader, test_loader
 
+    return train_loader, val_loader, test_loader
 
 
 def main(config_path):
@@ -216,20 +278,28 @@ def main(config_path):
     mlflow.set_experiment("MyProject")
 
     # Flatten config for params (filter to loggable types)
-    flat_config = {k: v for k, v in _flatten_dict(config).items() if isinstance(v, (str, int, float, bool))}
+    flat_config = {
+        k: v for k, v in _flatten_dict(config).items()
+        if isinstance(v, (str, int, float, bool))
+    }
 
     with mlflow.start_run(run_name=config["training"].get("run_name", "default")):
         mlflow.log_params(flat_config)
         mlflow.log_artifact(config_path)
 
+        # Log model type
+        model_type = config["model"]["type"]
+        mlflow.set_tag("model_type", model_type)
+        logger.info(f"Training {model_type.upper()} model")
+
         # Extract save_dir from config
         save_dir = config.get("preprocessing", {}).get(
-        "save_dir", "experiments/preprocessing/artifacts"
+            "save_dir", "experiments/preprocessing/artifacts"
         )
+        os.makedirs(save_dir, exist_ok=True)
         logger.info(f"Using save_dir: {save_dir}")
 
         # Load data
-        # preprocessor = DataPreprocessor()
         state_file = config["data"]["filepath"]["state"]
         train_file = config["data"]["filepath"]["train"]
         val_file = config["data"]["filepath"]["val"]
@@ -244,25 +314,32 @@ def main(config_path):
         X_test, y_test, _ = load_dataset(test_file, preprocessor, config)
 
         input_dim = X_train.shape[1]
-        logger.debug(f"input_dim: {input_dim}")
-        if X_train.shape[1] != config['model']['input_dim']:
-            logger.warning(f"Dataset has {X_train.shape[1]} features, but config expects {config['model']['input_dim']}")
+        logger.info(f"Input dimension: {input_dim}")
+        logger.info(f"Data shapes - Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
+
+        # Validate input dimensions
+        config_input_dim = config['model'].get('input_dim')
+        if config_input_dim not in [None, 'auto'] and X_train.shape[1] != config_input_dim:
+            logger.warning(
+                f"Dataset has {X_train.shape[1]} features, "
+                f"but config expects {config_input_dim}"
+            )
+
+        # Load feature names
         with open(state_file, "r") as f:
             preprocessor_state = json.load(f)
             feature_names = preprocessor_state["feature_columns"]
+        logger.info(f"Loaded {len(feature_names)} feature names")
 
         # Compute class weights if needed
-        if config["training"]["use_class_weights"]:
+        if config["training"].get("use_class_weights", False):
             class_weights = compute_class_weight(
                 "balanced", classes=np.unique(y_train_raw), y=y_train_raw
             )
-            class_weights[1] *= 1.5  # Conservative boost
+            class_weights[1] *= 1.5  # Conservative boost for minority class
             class_weights = np.clip(class_weights, 0.1, 10)
-            logger.info(f"Conservative class weights: {class_weights}")
+            logger.info(f"Class weights: {class_weights}")
         else:
-            logger.debug(
-                f"Class weights applied from config: {config["training"]["use_class_weights"]}"
-                )
             class_weights = None
 
         # Create loaders
@@ -279,27 +356,51 @@ def main(config_path):
 
         # Instantiate model
         model = instantiate_model(config["model"], input_dim)
+        logger.info(f"Model instantiated: {type(model).__name__}")
+        logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+
+        # Set device
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Using device: {device}")
 
         # Trainer
-        trainer = ModelTrainer(model, config)
-        trainer.hypertune(train_loader, val_loader, input_dim, config)
+        trainer = ModelTrainer(model, config, device)
+
+        # Set class weights if computed
+        if class_weights is not None:
+            trainer.class_weights = torch.FloatTensor(class_weights).to(device)
+
+        # Hypertune (if enabled)
+        best_params = trainer.hypertune(train_loader, val_loader, input_dim, config)
 
         # Train
         training_results = trainer.train(
-        train_loader, val_loader, config, **config["training"]
+            train_loader, val_loader, config, **config["training"]
         )
 
-        # Log scalar metrics from training
+        # Get the trained model
+        model = trainer.model
+
+        # Log training metrics
         mlflow.log_metric("best_val_loss", training_results["best_val_loss"])
+        mlflow.log_metric("epochs_trained", training_results["epochs_trained"])
 
         # Save losses as JSON artifact
-        import tempfile
+        losses_data = {
+            "train_losses": training_results["train_losses"],
+            "val_losses": training_results["val_losses"]
+        }
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump({"train_losses": training_results["train_losses"], "val_losses": training_results["val_losses"]}, f)
-        mlflow.log_artifact(f.name)
-        os.unlink(f.name)  # Clean up
+            json.dump(losses_data, f)
+            losses_path = f.name
+        mlflow.log_artifact(losses_path)
+        os.unlink(losses_path)
 
-        logger.info("\n=== EVALUATING BEST MODEL ===")
+        # === EVALUATION ===
+        logger.info("\n" + "=" * 50)
+        logger.info("EVALUATING BEST MODEL")
+        logger.info("=" * 50)
+
         evaluator = ModelEvaluator(
             model=model,
             device=trainer.device,
@@ -307,45 +408,101 @@ def main(config_path):
             config_path=config_path,
         )
         metrics, predictions, probabilities, targets = evaluator.evaluate(
-        test_loader, feature_names=feature_names
+            test_loader, feature_names=feature_names
         )
+
         # Log flat scalar metrics
         serial_metrics = evaluator._convert_to_serializable(metrics)
-        flat_metrics = {k: v for k, v in serial_metrics.items() if isinstance(v, (int, float))}
+        flat_metrics = filter_numeric_metrics(serial_metrics)
         mlflow.log_metrics(flat_metrics)
 
+        # === FEATURE IMPORTANCE ===
+        logger.info("\n" + "=" * 50)
+        logger.info("CALCULATING FEATURE IMPORTANCE")
+        logger.info("=" * 50)
 
+        importance_df = get_feature_importance(
+            model=model,
+            X=X_test,
+            y=y_test,
+            feature_names=feature_names,
+            save_dir=save_dir,
+            model_type="nn",
+            n_repeats=10
+        )
+
+        # === SAVE RESULTS ===
         timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
-        filename = f"final_results_{timestamp}.json"
+        filename = f"final_results_{model_type}_{timestamp}.json"
 
-        # Save results
         results = {
             "date": datetime.now().strftime("%m-%d-%Y %H:%M"),
-            "full_config": config,
-            "model_config": config["model"],
-            "training_results": training_results,
+            "model_type": model_type,
+            "config_path": config_path,
+            "input_dim": input_dim,
+            "best_hyperparams": best_params,
+            "training_results": {
+                "best_val_loss": training_results["best_val_loss"],
+                "epochs_trained": training_results["epochs_trained"],
+                "final_train_loss": training_results["train_losses"][-1] if training_results["train_losses"] else None,
+                "final_val_loss": training_results["val_losses"][-1] if training_results["val_losses"] else None,
+            },
             "test_metrics": {
                 "accuracy": metrics["accuracy"],
+                "precision": metrics["precision"],
+                "recall": metrics["recall"],
                 "f1_score": metrics["f1"],
                 "roc_auc": metrics["roc_auc"],
-                "recall": metrics["recall"],
+                "log_loss": metrics.get("log_loss"),
             },
+            "top_features": (
+                importance_df.head(10)[['feature', 'importance']].to_dict('records')
+                if importance_df is not None else None
+            ),
+            "full_config": config,
         }
+
         filepath = os.path.join(save_dir, filename)
         with open(filepath, "w") as f:
-            json.dump(results, f, indent=2)
+            json.dump(results, f, indent=2, default=str)
+        mlflow.log_artifact(filepath)
+        logger.info(f"Results saved to {filepath}")
 
-    mlflow.pytorch.log_model(model, "model", registered_model_name="PredictorModel")
-    logger.info("\n🎉 FINAL TRAINING COMPLETED!")
+        # Log model to MLflow
+        mlflow.pytorch.log_model(model, "model", registered_model_name="PredictorModel")
+        logger.info("Model logged to MLflow")
 
-    end_time = time.time()
-    total_runtime = (end_time - start_time)/60
-    mlflow.log_metric("total_runtime_minutes", total_runtime)
-    logger.info(f"Training Completed: Total runtime: {total_runtime}")
+        # Log runtime
+        end_time = time.time()
+        total_runtime = (end_time - start_time) / 60
+        mlflow.log_metric("total_runtime_minutes", total_runtime)
+
+    # Print summary
+    logger.info("\n" + "=" * 50)
+    logger.info("🎉 TRAINING COMPLETED!")
+    logger.info("=" * 50)
+    logger.info(f"Model type: {model_type.upper()}")
+    logger.info(f"Total runtime: {total_runtime:.2f} minutes")
+    logger.info(f"Epochs trained: {training_results['epochs_trained']}")
+    logger.info(f"Best validation loss: {training_results['best_val_loss']:.4f}")
+    logger.info(f"Test ROC-AUC: {metrics['roc_auc']:.4f}")
+    logger.info(f"Test Accuracy: {metrics['accuracy']:.4f}")
+    logger.info(f"Test F1: {metrics['f1']:.4f}")
+    if best_params:
+        logger.info(f"Best hyperparameters: {best_params}")
+    if importance_df is not None:
+        logger.info(f"Top 3 features: {importance_df.head(3)['feature'].tolist()}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True, help="Path to YAML config")
+    parser = argparse.ArgumentParser(
+        description="Train neural network models (MLP, Logistic Regression)"
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        required=True,
+        help="Path to YAML config file"
+    )
     args = parser.parse_args()
     main(args.config)
