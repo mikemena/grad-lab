@@ -125,7 +125,8 @@ model:
 
 ```yaml
 training:
-  run_name: tokyo            # Experiment identifier
+  experiment_name: MyProj    # Experiment Name
+  run_name: tokyo            # Run identifier
   epochs: 50                 # Maximum training epochs
   lr: 0.001                  # Learning rate
   loss_type: bce             # Loss function

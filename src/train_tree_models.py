@@ -256,7 +256,10 @@ def main(config_path):
     with open(config_path, "r") as f:
         config = yaml.load(f)
 
-    mlflow.set_experiment("MyProject")
+    experiment_name = config['training'].get('experiment_name')
+    logger.debug(f"Experiment Name: {experiment_name}")
+
+    mlflow.set_experiment(f"{experiment_name}")
     flat_config = {
         k: v for k, v in _flatten_dict(config).items()
         if isinstance(v, (str, int, float, bool))
