@@ -1,10 +1,3 @@
-"""
-Feature importance utilities for both tree-based and neural network models.
-
-Tree models: Uses built-in feature_importances_ (MDI for RF, Gain for XGBoost)
-Neural networks: Uses permutation importance
-"""
-
 import numpy as np
 import pandas as pd
 import torch
@@ -18,21 +11,7 @@ logger = setup_logger(__name__, include_location=True)
 
 
 def get_feature_importance(model, X, y, feature_names, save_dir, model_type="tree", n_repeats=10):
-    """
-    Calculate and log feature importance for any model type.
-
-    Args:
-        model: Trained model (sklearn tree or PyTorch nn.Module)
-        X: Features (numpy array or torch tensor)
-        y: Targets (numpy array or torch tensor)
-        feature_names: List of feature names
-        save_dir: Directory to save importance CSV
-        model_type: "tree" or "nn"
-        n_repeats: Number of permutation repeats (for NN only)
-
-    Returns:
-        DataFrame with feature importances sorted descending
-    """
+    """Calculate and log feature importance for any model type."""
     if model_type == "tree":
         return _tree_feature_importance(model, feature_names, save_dir)
     elif model_type == "nn":

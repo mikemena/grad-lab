@@ -244,9 +244,7 @@ class ModelTrainer:
         return best_params
 
 
-def create_data_loaders(
-    X_train, y_train, X_val, y_val, X_test, y_test, batch_size=32, use_sampler=False
-):
+def create_data_loaders(X_train, y_train, X_val, y_val, X_test, y_test, batch_size=32, use_sampler=False):
     """Create DataLoaders with optional weighted sampling."""
     train_dataset = TensorDataset(X_train, y_train)
     val_dataset = TensorDataset(X_val, y_val)
