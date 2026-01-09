@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import log_loss, accuracy_score
+from sklearn.base import BaseEstimator, ClassifierMixin
 import mlflow
 import os
 from logger import setup_logger
@@ -95,7 +96,7 @@ def _nn_permutation_importance(model, X, y, feature_names, save_dir, n_repeats=1
         y_np,
         n_repeats=n_repeats,
         random_state=42,
-        scoring='neg_log_loss',  # Use log loss for probability models
+        scoring='roc_auc',  # Use log loss for probability models
         n_jobs=-1
     )
 
@@ -112,7 +113,7 @@ def _nn_permutation_importance(model, X, y, feature_names, save_dir, n_repeats=1
     return importance_df
 
 
-class _PyTorchWrapper:
+class _PyTorchWrapper(BaseEstimator, ClassifierMixin):
     """
     Wrapper to make PyTorch models compatible with sklearn's permutation_importance.
 
@@ -141,6 +142,14 @@ class _PyTorchWrapper:
         """Return class predictions."""
         proba = self.predict_proba(X)
         return (proba[:, 1] >= 0.5).astype(int)
+
+    def fit(self, X=None, y=None):
+        """
+        Dummy fit method required by scikit-learn >=1.6 for permutation_importance.
+        The model is already trained, so this does nothing.
+        Returns self for chaining compatibility.
+        """
+        return self
 
 
 def _save_and_log_importance(importance_df, save_dir, filename):

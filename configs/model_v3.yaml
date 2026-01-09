@@ -1,6 +1,6 @@
 # Use this model to test quickly
 model: # Model architecture
-  type: basic # 'basic' for Predictor, 'improved' for ImprovedPredictor
+  type: nn_basic # nn_basic,nn_improved, logistic, rf, xgb
   input_dim: 28
   hidden_dims: [64]
   dropout_rate: 0.3
@@ -9,6 +9,7 @@ model: # Model architecture
   use_residual: false # Disable to reduce complexity
 
 training: # Training parameters
+  experiment_name: MyProj
   run_name: jax
   epochs: 50 # Reduced to speed up training
   lr: 0.001 # Standard for Adam

@@ -1,5 +1,5 @@
 model: # Model architecture
-  type: improved # 'basic' for Predictor, 'improved' for ImprovedPredictor
+  type: nn_improved # nn_basic,nn_improved, logistic, rf, xgb
   input_dim: 14
   hidden_dims: [256, 128, 64]
   dropout_rate: 0.3
@@ -8,6 +8,7 @@ model: # Model architecture
   use_residual: false
 
 training: # Training parameters
+  experiment_name: MyProj
   run_name: miami
   epochs: 50
   lr: 0.001

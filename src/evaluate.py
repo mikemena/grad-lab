@@ -111,7 +111,7 @@ class ModelEvaluator:
         serial_metrics = self._convert_to_serializable(metrics)
         flat_metrics = filter_numeric_metrics(serial_metrics)
         logger.debug(f"Logging metrics to MLflow: {list(flat_metrics.keys())}")
-        mlflow.log_metric(flat_metrics)
+        mlflow.log_metrics(flat_metrics)
 
         # Optimize threshold for recall
         optimal_recall_threshold, optimal_recall_score, thresholds, scores = (
@@ -164,7 +164,7 @@ class ModelEvaluator:
             else:
                 logger.info(f"{metric_name}: {value}")
 
-        mlflow.log_metric(filter_numeric_metrics(serial_metrics))
+        mlflow.log_metrics(filter_numeric_metrics(serial_metrics))
 
         return metrics, predictions, probabilities, targets
 
@@ -501,7 +501,7 @@ class BusinessImpactAnalyzer:
                 "true_negatives": int(tn),
             }
             flat_business_metrics = filter_numeric_metrics(business_metrics)
-            mlflow.log_metric(flat_business_metrics)
+            mlflow.log_metrics(flat_business_metrics)
 
             return business_metrics
 

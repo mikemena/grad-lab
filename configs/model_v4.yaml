@@ -1,5 +1,5 @@
 model: # Model architecture
-  type: logistic # basic,improved, logistic
+  type: logistic # nn_basic,nn_improved, logistic, rf, xgb
   input_dim: 28
   hidden_dims: [] # logistic regression doesn’t use
   dropout_rate: 0 # logistic regression doesn’t use
@@ -8,6 +8,7 @@ model: # Model architecture
   use_residual: false # logistic regression doesn’t use
 
 training: # Training parameters
+  experiment_name: MyProj
   run_name: sydney
   epochs: 50
   lr: 0.0001

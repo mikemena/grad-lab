@@ -1,5 +1,5 @@
 model: # Model architecture
-  type: basic # basic,improved, logistic, rf, xgb
+  type: nn_basic # nn_basic,nn_improved, logistic, rf, xgb
   input_dim: 14
   hidden_dims: [64]
   dropout_rate: 0.7
@@ -34,6 +34,7 @@ model: # Model architecture
     eval_metric: "logloss"
 
 training: # Training parameters
+  experiment_name: MyProj
   run_name: tokyo
   epochs: 25
   lr: 0.02

@@ -9,7 +9,7 @@ from data.data_preprocessor import DataPreprocessor
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from models.predictor import FocalLoss
 from utils import instantiate_model, load_dataset, _flatten_dict, filter_numeric_metrics
-from feature_importance import get_feature_importance
+# from feature_importance import get_feature_importance
 import numpy as np
 from datetime import datetime
 import json
@@ -22,7 +22,6 @@ import mlflow
 logger = setup_logger(__name__, include_location=True)
 
 yaml = YAML()
-
 
 class ModelTrainer:
     def __init__(self, model, config, device=None):
@@ -243,7 +242,6 @@ class ModelTrainer:
 
         return best_params
 
-
 def create_data_loaders(X_train, y_train, X_val, y_val, X_test, y_test, batch_size=32, use_sampler=False):
     """Create DataLoaders with optional weighted sampling."""
     train_dataset = TensorDataset(X_train, y_train)
@@ -421,15 +419,15 @@ def main(config_path):
         logger.info("CALCULATING FEATURE IMPORTANCE")
         logger.info("=" * 50)
 
-        importance_df = get_feature_importance(
-            model=model,
-            X=X_test,
-            y=y_test,
-            feature_names=feature_names,
-            save_dir=save_dir,
-            model_type="nn",
-            n_repeats=10
-        )
+        # importance_df = get_feature_importance(
+        #     model=model,
+        #     X=X_test,
+        #     y=y_test,
+        #     feature_names=feature_names,
+        #     save_dir=save_dir,
+        #     model_type="nn",
+        #     n_repeats=10
+        # )
 
         # === SAVE RESULTS ===
         timestamp = datetime.now().strftime("%m-%d-%Y_%H-%M")
@@ -455,10 +453,10 @@ def main(config_path):
                 "roc_auc": metrics["roc_auc"],
                 "log_loss": metrics.get("log_loss"),
             },
-            "top_features": (
-                importance_df.head(10)[['feature', 'importance']].to_dict('records')
-                if importance_df is not None else None
-            ),
+            # "top_features": (
+            #     importance_df.head(10)[['feature', 'importance']].to_dict('records')
+            #     if importance_df is not None else None
+            # ),
             "full_config": config,
         }
 
@@ -490,8 +488,8 @@ def main(config_path):
     logger.info(f"Test F1: {metrics['f1']:.4f}")
     if best_params:
         logger.info(f"Best hyperparameters: {best_params}")
-    if importance_df is not None:
-        logger.info(f"Top 3 features: {importance_df.head(3)['feature'].tolist()}")
+    # if importance_df is not None:
+    #     logger.info(f"Top 3 features: {importance_df.head(3)['feature'].tolist()}")
 
 
 if __name__ == "__main__":
