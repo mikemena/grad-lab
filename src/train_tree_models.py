@@ -205,15 +205,22 @@ def log_feature_importance(model, feature_names, save_dir):
         }).sort_values('importance', ascending=False)
 
         # Save to CSV
-        importance_path = os.path.join(save_dir, 'feature_importance.csv')
+        os.makedirs(save_dir, exist_ok=True)
+        importance_path = os.path.join(save_dir, "feature_importance.csv")
         importance_df.to_csv(importance_path, index=False)
-        mlflow.log_artifact(importance_path)
 
-        # Log top 10 as metrics
+        try:
+            mlflow.log_artifact(importance_path)
+        except Exception as e:
+            logger.warning(f"Could not log feature importance to MLflow: {e}")
+
+        # Log top features as metrics
         for i, row in importance_df.head(10).iterrows():
-            # Clean feature name for MLflow metric naming
             clean_name = row['feature'].replace(' ', '_').replace('/', '_')[:50]
-            mlflow.log_metric(f"importance_{clean_name}", row['importance'])
+            try:
+                mlflow.log_metric(f"importance_{clean_name}", row['importance'])
+            except Exception:
+                pass
 
         logger.info(f"✓ Feature importance saved to {importance_path}")
         logger.info(f"Top 5 features:\n{importance_df.head().to_string()}")
@@ -225,48 +232,117 @@ def log_feature_importance(model, feature_names, save_dir):
 
 
 def log_tree_params(model, config):
-    """Log final tree model parameters to MLflow."""
+    """
+    Log final tree model parameters to MLflow with clear, prominent naming.
+
+    IMPROVED: Logs model-specific params with clearer keys for easy comparison.
+    """
     base_model = get_base_estimator(model)
+    model_type = config["model"]["type"]
 
-    if hasattr(base_model, "get_params"):
-        final_params = base_model.get_params()
-
-        # Filter only tree-relevant params
-        tree_keys = [
-            "n_estimators", "max_depth", "min_samples_split", "min_samples_leaf",
-            "learning_rate", "subsample", "colsample_bytree", "reg_lambda",
-            "criterion", "class_weight", "scale_pos_weight", "max_features"
-        ]
-        tree_params = {
-            k: v for k, v in final_params.items()
-            if k in tree_keys and v is not None
-        }
-
-        # Log with prefix
-        mlflow.log_params({f"final_{k}": v for k, v in tree_params.items()})
-        logger.info(f"Logged final tree params: {tree_params}")
-        return tree_params
-    else:
+    if not hasattr(base_model, "get_params"):
         logger.warning("Model does not have get_params(); skipping param logging.")
         return None
+
+    final_params = base_model.get_params()
+
+    # Define model-specific important params
+    if model_type == "rf":
+        important_keys = [
+            "n_estimators", "max_depth", "min_samples_split", "min_samples_leaf",
+            "criterion", "class_weight", "max_features", "bootstrap"
+        ]
+        prefix = "rf"
+    elif model_type == "xgb":
+        important_keys = [
+            "n_estimators", "max_depth", "learning_rate", "subsample",
+            "colsample_bytree", "reg_lambda", "scale_pos_weight", "gamma"
+        ]
+        prefix = "xgb"
+    else:
+        # Generic tree params
+        important_keys = [
+            "n_estimators", "max_depth", "min_samples_split", "min_samples_leaf"
+        ]
+        prefix = "tree"
+
+    # Extract and log important params
+    tree_params = {}
+    for key in important_keys:
+        if key in final_params and final_params[key] is not None:
+            tree_params[key] = final_params[key]
+
+    # Log with model-specific prefix for clarity
+    # This makes them show up clearly in MLflow comparisons
+    mlflow_params = {f"{prefix}_{k}": v for k, v in tree_params.items()}
+    mlflow.log_params(mlflow_params)
+
+    logger.info(f"Logged {model_type.upper()} params: {tree_params}")
+    return tree_params
+
+
+def log_model_config_params(config):
+    """
+    Log only the most important config params for model comparison.
+    Avoids cluttering MLflow with every single config value.
+    """
+    model_type = config["model"]["type"]
+
+    # Essential params to log for comparison
+    essential_params = {
+        # Model architecture
+        "model_type": model_type,
+        "input_dim": config["model"].get("input_dim", "auto"),
+
+        # Training params (only if model is NN)
+        "epochs": config["training"].get("epochs") if model_type in ["nn_basic", "nn_improved", "logistic"] else None,
+        "learning_rate": config["training"].get("lr") if model_type in ["nn_basic", "nn_improved", "logistic"] else None,
+        "batch_size": config["training"].get("batch_size") if model_type in ["nn_basic", "nn_improved", "logistic"] else None,
+
+        # Common params
+        "calibrate": config["tuning"].get("calibrate", False),
+        "tuning_enabled": config["tuning"].get("enabled", False),
+    }
+
+    # Remove None values
+    essential_params = {k: v for k, v in essential_params.items() if v is not None}
+
+    # Log RF-specific config params
+    if model_type == "rf" and "rf_params" in config["model"]:
+        rf_config = config["model"]["rf_params"]
+        for key, value in rf_config.items():
+            if value is not None:
+                essential_params[f"config_rf_{key}"] = value
+
+    # Log XGB-specific config params
+    if model_type == "xgb" and "xgb_params" in config["model"]:
+        xgb_config = config["model"]["xgb_params"]
+        for key, value in xgb_config.items():
+            if value is not None:
+                essential_params[f"config_xgb_{key}"] = value
+
+    mlflow.log_params(essential_params)
+    logger.info(f"Logged essential config params: {list(essential_params.keys())}")
 
 
 def main(config_path):
     start_time = time.time()
+
+    # Load config
     with open(config_path, "r") as f:
         config = yaml.load(f)
 
-    experiment_name = config['training'].get('experiment_name')
-    logger.debug(f"Experiment Name: {experiment_name}")
+    # Create MLflow run
+    experiment_name = config["training"].get("experiment_name", "MyProj")
+    mlflow.set_experiment(experiment_name)
 
-    mlflow.set_experiment(f"{experiment_name}")
-    flat_config = {
-        k: v for k, v in _flatten_dict(config).items()
-        if isinstance(v, (str, int, float, bool))
-    }
+    run_name = config["training"].get("run_name", "tree_run")
 
-    with mlflow.start_run(run_name=config["training"].get("run_name", "default")):
-        mlflow.log_params(flat_config)
+    with mlflow.start_run(run_name=run_name) as run:
+        # Log only essential config params (IMPROVED)
+        log_model_config_params(config)
+
+        # Still log full config as artifact for reference
         mlflow.log_artifact(config_path)
 
         # Log model type
@@ -330,7 +406,7 @@ def main(config_path):
         # Get the trained model (potentially updated by trainer)
         model = trainer.model
 
-        # Log final tree parameters
+        # Log final tree parameters (IMPROVED with clearer naming)
         final_params = log_tree_params(model, config)
 
         # Log feature importance

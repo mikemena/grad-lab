@@ -20,7 +20,6 @@ import tempfile
 import mlflow
 
 logger = setup_logger(__name__, include_location=True)
-
 yaml = YAML()
 
 class ModelTrainer:
@@ -265,6 +264,58 @@ def create_data_loaders(X_train, y_train, X_val, y_val, X_test, y_test, batch_si
 
     return train_loader, val_loader, test_loader
 
+def log_model_config_params(config):
+    """Log most important config params for model comparison"""
+    model_type = config["model"]["type"]
+
+    # Essential params to log for comparison
+    essential_params = {
+        "model_type": model_type,
+        "input_dim": config["model"].get("input_dim", "auto"),
+        "tuning": config["tuning"],
+        "tuning_enabled": config["tuning"].get("enabled", False)
+    }
+
+    # Random Forest params
+    if model_type == "rf" and "rf_params" in config["model"]:
+        rf_config = config["model"]["rf_params"]
+        for key, value in rf_config.items():
+            if value is not None:
+                essential_params[f"rf_{key}"] = value
+
+    # XG Boost params
+    elif model_type == "xgb" and "xgb_params" in config["model"]:
+        xgb_config = config["model"]["xgb_params"]
+        for key, value in xgb_config.items():
+            if value is not None:
+                essential_params[f"xgb_{key}"] = value
+
+    # Neural Network params
+    elif model_type in ["nn_basic", "nn_improved", "logistic"]:
+        # Model architecture params
+        essential_params.update({
+            "nn_hidden_dims": str(config["model"].get("hidden_dims", [])),
+            "nn_dropout": config["model"].get("dropout_rate"),
+            "nn_activation": config["model"].get("activation"),
+            "nn_batch_norm": config["model"].get("use_batch_norm"),
+            "nn_residual": config["model"].get("use_residual", False),
+        })
+
+        # Training params (only relevant for NNs)
+        essential_params.update({
+            "epochs": config["training"].get("epochs"),
+            "learning_rate": config["training"].get("lr"),
+            "batch_size": config["training"].get("batch_size"),
+            "optimizer": config["training"].get("optimizer_name"),
+            "weight_decay": config["training"].get("weight_decay"),
+            "loss_type": config["training"].get("loss_type"),
+        })
+
+    # Remove None values
+    essential_params = {k: v for k, v in essential_params.items() if v is not None}
+    mlflow.log_params(essential_params)
+    logger.debug(f"Logged {len(essential_params)} essential params for {model_type.upper()}")
+    return essential_params
 
 def main(config_path):
     start_time = time.time()
@@ -275,14 +326,11 @@ def main(config_path):
     logger.debug(f"Experiment Name: {experiment_name}")
     mlflow.set_experiment(f"{experiment_name}")
 
-    # Flatten config for params (filter to loggable types)
-    flat_config = {
-        k: v for k, v in _flatten_dict(config).items()
-        if isinstance(v, (str, int, float, bool))
-    }
+    run_name = config["training"].get("run_name", "tree_run")
 
-    with mlflow.start_run(run_name=config["training"].get("run_name", "default")):
-        mlflow.log_params(flat_config)
+    with mlflow.start_run(run_name=run_name) as run:
+        log_model_config_params(config)
+
         mlflow.log_artifact(config_path)
 
         # Log model type

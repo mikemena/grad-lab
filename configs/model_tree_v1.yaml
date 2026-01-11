@@ -35,7 +35,7 @@ model: # Model architecture
 
 training: # Training parameters
   experiment_name: MyProj
-  run_name: tokyo
+  run_name: tokyo-rf
   epochs: 25
   lr: 0.02
   loss_type: bce # 'bce', 'weighted_bce', 'focal'
